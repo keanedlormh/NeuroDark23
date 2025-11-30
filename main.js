@@ -1,6 +1,6 @@
 /*
- * NEURODARK MAIN CONTROLLER v6 (High Performance)
- * Features: Decoupled Visual/Audio loops & Render Queue
+ * NEURODARK MAIN CONTROLLER v7 (Worker Threaded)
+ * Features: Web Worker Clock for stable background playback
  */
 
 // STATE
@@ -21,12 +21,13 @@ let masterGain = null;
 
 // SCHEDULING GLOBALS
 let nextNoteTime = 0.0;
-let schedulerTimerID = null;
 const SCHEDULE_AHEAD_TIME = 0.1; // 100ms
 const LOOKAHEAD_INTERVAL = 25;   // 25ms
 
-// VISUAL QUEUE (Decouples UI from Audio)
-// Stores: { step: number, time: number }
+// WORKER (The background heartbeat)
+let clockWorker = null;
+
+// VISUAL QUEUE
 let visualQueue = [];
 let drawFrameId = null;
 let lastDrawnStep = -1;
@@ -34,14 +35,18 @@ let lastDrawnStep = -1;
 // --- INITIALIZATION ---
 
 function initEngine() {
+    // 1. Audio Context
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext();
+        audioCtx = new AudioContext({
+            latencyHint: 'interactive', // Prioritize low latency
+            sampleRate: 44100
+        });
         
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.6;
         
-        // Limiter to prevent clipping
+        // Limiter
         const limiter = audioCtx.createDynamicsCompressor();
         limiter.threshold.value = -3;
         limiter.ratio.value = 12;
@@ -54,7 +59,18 @@ function initEngine() {
         if(window.bassSynth) window.bassSynth.init(audioCtx, masterGain);
         if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
-        // UI Clean up
+        // Init Worker
+        if (!clockWorker) {
+            clockWorker = new Worker('Synth/clock_worker.js');
+            clockWorker.onmessage = (e) => {
+                if (e.data === "tick") {
+                    scheduler();
+                }
+            };
+            clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
+        }
+
+        // Cleanup UI
         const overlay = document.getElementById('start-overlay');
         if(overlay) {
             overlay.style.opacity = '0';
@@ -64,15 +80,16 @@ function initEngine() {
         const led = document.getElementById('activity-led');
         if(led) led.classList.replace('bg-red-900', 'bg-green-600');
         
-        console.log("Audio Engine: HIGH PERFORMANCE MODE");
+        console.log("NeuroDark Engine: WORKER THREAD ACTIVE");
     }
 
+    // 2. Always Resume
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
 }
 
-// --- AUDIO SCHEDULER (The Brain) ---
+// --- AUDIO SCHEDULER ---
 
 function nextNote() {
     const secondsPerBeat = 60.0 / AppState.bpm;
@@ -86,66 +103,60 @@ function nextNote() {
 }
 
 function scheduleNote(stepNumber, time) {
-    // 1. PUSH TO VISUAL QUEUE (Don't draw yet!)
+    // Push to Visual Queue
     visualQueue.push({ step: stepNumber, time: time });
 
-    // 2. SCHEDULE AUDIO EVENTS
+    // Audio Trigger
     const data = window.timeMatrix.getStepData(stepNumber);
 
-    // Play Bass
     if (data.bass && window.bassSynth) {
         window.bassSynth.play(
             data.bass.note, 
             data.bass.octave, 
             time, 
-            0.25, // Slightly shorter for tighter sound
+            0.25, 
             AppState.distortionLevel
         );
     }
 
-    // Play Drums
     if (data.drums && data.drums.length > 0 && window.drumSynth) {
         data.drums.forEach(drumId => {
-            // Small micro-timing randomisation for "human" feel could go here
             window.drumSynth.play(drumId, time);
         });
     }
 }
 
 function scheduler() {
-    // Schedule notes falling within the lookahead window
+    // This is now triggered by the Worker "tick"
+    // It runs reliably even in background tabs
+    
+    // Look ahead and schedule
     while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD_TIME) {
         scheduleNote(AppState.currentStep, nextNoteTime);
         nextNote();
     }
-    
-    if (AppState.isPlaying) {
-        schedulerTimerID = setTimeout(scheduler, LOOKAHEAD_INTERVAL);
-    }
 }
 
-// --- VISUAL LOOP (The Painter) ---
-// Runs on requestAnimationFrame, completely separate from audio clock
+// --- VISUAL LOOP (UI Thread) ---
+// This might stop in background, but audio won't
 
 function drawLoop() {
     const currentTime = audioCtx.currentTime;
 
-    // Process queue
     while (visualQueue.length && visualQueue[0].time <= currentTime) {
         const event = visualQueue.shift();
         
-        // Only draw if it's a new step (optimization)
         if (lastDrawnStep !== event.step) {
             window.timeMatrix.highlightPlayingStep(event.step);
             
-            // Blink LED on beat
+            // LED Blink
             if (event.step % 4 === 0) {
                 const led = document.getElementById('activity-led');
-                if(led) {
+                if(led && !document.hidden) { // Only animate if visible to save CPU
                     led.style.backgroundColor = '#fff';
                     led.style.boxShadow = '0 0 10px #fff';
                     setTimeout(() => {
-                        led.style.backgroundColor = ''; // Reverts to CSS class
+                        led.style.backgroundColor = ''; 
                         led.style.boxShadow = '';
                     }, 50);
                 }
@@ -159,7 +170,7 @@ function drawLoop() {
     }
 }
 
-// --- TRANSPORT CONTROL ---
+// --- TRANSPORT ---
 
 function toggleTransport() {
     initEngine();
@@ -179,13 +190,16 @@ function toggleTransport() {
             }
         }
 
-        // Reset State
         AppState.currentStep = 0;
-        nextNoteTime = audioCtx.currentTime + 0.1; // Extra buffer for start
-        visualQueue = []; // Clear queue
+        nextNoteTime = audioCtx.currentTime + 0.1;
+        visualQueue = []; 
         
-        scheduler(); // Start Audio Thread
-        drawLoop();  // Start Visual Thread
+        // Start Worker (Audio Clock)
+        if(clockWorker) clockWorker.postMessage("start");
+        
+        // Start Visuals
+        drawLoop();
+
     } else {
         // STOP
         if(btn) {
@@ -197,10 +211,11 @@ function toggleTransport() {
             }
         }
 
-        clearTimeout(schedulerTimerID);
+        // Stop Worker
+        if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId);
         
-        // Clean up UI
+        // Reset Visuals
         if(window.timeMatrix && window.timeMatrix.container) {
             const old = window.timeMatrix.container.querySelector('.step-playing');
             if (old) old.classList.remove('step-playing');
@@ -208,7 +223,7 @@ function toggleTransport() {
     }
 }
 
-// --- UI HANDLERS (Same as before) ---
+// --- UI HANDLERS ---
 
 function togglePanelMode() {
     const panel = document.getElementById('editor-panel');
@@ -326,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Bass Controls
+    // Synth Controls
     const octDisplay = document.getElementById('oct-display');
     document.getElementById('oct-up').onclick = () => {
         if(AppState.currentOctave < 6) AppState.currentOctave++;
@@ -337,7 +352,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if(octDisplay) octDisplay.innerText = AppState.currentOctave;
     };
     
-    // Optimized Slider: Update BassSynth curve immediately
     document.getElementById('dist-slider').oninput = (e) => {
         AppState.distortionLevel = parseInt(e.target.value);
         if(window.bassSynth) window.bassSynth.updateDistortionCurve(AppState.distortionLevel);
@@ -367,7 +381,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Ensure initial panel state
     if(AppState.panelMode === 'docked') {
          const panel = document.getElementById('editor-panel');
          const dockPlaceholder = document.getElementById('dock-placeholder');
