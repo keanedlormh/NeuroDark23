@@ -1,31 +1,37 @@
 /*
- * NEURODARK MAIN CONTROLLER v7 (Worker Threaded)
- * Features: Web Worker Clock for stable background playback
+ * NEURODARK MAIN CONTROLLER v8 (Song Mode & Track Manager)
  */
 
 // STATE
 const AppState = {
     isPlaying: false,
     bpm: 174,
-    currentStep: 0,
-    activeView: 'bass',
+    
+    // Playhead (Audio)
+    currentPlayStep: 0,
+    currentPlayBlock: 0,
+    
+    // Editor (Visual)
+    editingBlock: 0,
     selectedStep: 0,
+    activeView: 'bass',
+    
+    // Settings
     currentOctave: 3,
     distortionLevel: 20,
-    panelMode: 'docked'
+    panelMode: 'docked',
+    trackEditMode: false
 };
 
 // AUDIO GLOBALS
 let audioCtx = null;
 let masterGain = null;
-
-// SCHEDULING GLOBALS
-let nextNoteTime = 0.0;
-const SCHEDULE_AHEAD_TIME = 0.1; // 100ms
-const LOOKAHEAD_INTERVAL = 25;   // 25ms
-
-// WORKER (The background heartbeat)
 let clockWorker = null;
+
+// SCHEDULING
+let nextNoteTime = 0.0;
+const SCHEDULE_AHEAD_TIME = 0.1;
+const LOOKAHEAD_INTERVAL = 25;
 
 // VISUAL QUEUE
 let visualQueue = [];
@@ -35,110 +41,91 @@ let lastDrawnStep = -1;
 // --- INITIALIZATION ---
 
 function initEngine() {
-    // 1. Audio Context
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtx = new AudioContext({
-            latencyHint: 'interactive', // Prioritize low latency
-            sampleRate: 44100
-        });
+        audioCtx = new AudioContext({ latencyHint: 'interactive' });
         
         masterGain = audioCtx.createGain();
         masterGain.gain.value = 0.6;
         
-        // Limiter
         const limiter = audioCtx.createDynamicsCompressor();
         limiter.threshold.value = -3;
         limiter.ratio.value = 12;
-        limiter.attack.value = 0.003;
         
         masterGain.connect(limiter);
         limiter.connect(audioCtx.destination);
 
-        // Init Modules
         if(window.bassSynth) window.bassSynth.init(audioCtx, masterGain);
         if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
-        // Init Worker
+        // Worker
         if (!clockWorker) {
             clockWorker = new Worker('Synth/clock_worker.js');
-            clockWorker.onmessage = (e) => {
-                if (e.data === "tick") {
-                    scheduler();
-                }
-            };
+            clockWorker.onmessage = (e) => { if (e.data === "tick") scheduler(); };
             clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
         }
 
-        // Cleanup UI
         const overlay = document.getElementById('start-overlay');
         if(overlay) {
             overlay.style.opacity = '0';
             setTimeout(() => overlay.remove(), 500);
         }
         
-        const led = document.getElementById('activity-led');
-        if(led) led.classList.replace('bg-red-900', 'bg-green-600');
-        
-        console.log("NeuroDark Engine: WORKER THREAD ACTIVE");
+        console.log("Audio Engine: ONLINE");
     }
-
-    // 2. Always Resume
-    if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
-    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 
-// --- AUDIO SCHEDULER ---
+// --- AUDIO SCHEDULER (Multi-Block Logic) ---
 
 function nextNote() {
     const secondsPerBeat = 60.0 / AppState.bpm;
-    const secondsPerStep = secondsPerBeat / 4; // 1/16th note
+    const secondsPerStep = secondsPerBeat / 4; 
     nextNoteTime += secondsPerStep;
     
-    AppState.currentStep++;
-    if (AppState.currentStep >= window.timeMatrix.totalSteps) {
-        AppState.currentStep = 0;
+    AppState.currentPlayStep++;
+    
+    // End of Block reached?
+    if (AppState.currentPlayStep >= window.timeMatrix.totalSteps) {
+        AppState.currentPlayStep = 0;
+        
+        // Advance Block
+        AppState.currentPlayBlock++;
+        if (AppState.currentPlayBlock >= window.timeMatrix.blocks.length) {
+            AppState.currentPlayBlock = 0; // Loop song
+        }
     }
 }
 
-function scheduleNote(stepNumber, time) {
-    // Push to Visual Queue
-    visualQueue.push({ step: stepNumber, time: time });
+function scheduleNote(stepNumber, blockIndex, time) {
+    // 1. Queue Visuals
+    // Only queue visual update if the playing block is the one being edited
+    // or we want to update the track bar
+    visualQueue.push({ 
+        step: stepNumber, 
+        block: blockIndex, 
+        time: time 
+    });
 
-    // Audio Trigger
-    const data = window.timeMatrix.getStepData(stepNumber);
+    // 2. Audio Trigger
+    const data = window.timeMatrix.getStepData(stepNumber, blockIndex);
 
     if (data.bass && window.bassSynth) {
-        window.bassSynth.play(
-            data.bass.note, 
-            data.bass.octave, 
-            time, 
-            0.25, 
-            AppState.distortionLevel
-        );
+        window.bassSynth.play(data.bass.note, data.bass.octave, time, 0.25, AppState.distortionLevel);
     }
-
-    if (data.drums && data.drums.length > 0 && window.drumSynth) {
-        data.drums.forEach(drumId => {
-            window.drumSynth.play(drumId, time);
-        });
+    if (data.drums && window.drumSynth) {
+        data.drums.forEach(id => window.drumSynth.play(id, time));
     }
 }
 
 function scheduler() {
-    // This is now triggered by the Worker "tick"
-    // It runs reliably even in background tabs
-    
-    // Look ahead and schedule
     while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD_TIME) {
-        scheduleNote(AppState.currentStep, nextNoteTime);
+        scheduleNote(AppState.currentPlayStep, AppState.currentPlayBlock, nextNoteTime);
         nextNote();
     }
 }
 
-// --- VISUAL LOOP (UI Thread) ---
-// This might stop in background, but audio won't
+// --- VISUAL LOOP ---
 
 function drawLoop() {
     const currentTime = audioCtx.currentTime;
@@ -146,27 +133,96 @@ function drawLoop() {
     while (visualQueue.length && visualQueue[0].time <= currentTime) {
         const event = visualQueue.shift();
         
-        if (lastDrawnStep !== event.step) {
-            window.timeMatrix.highlightPlayingStep(event.step);
-            
-            // LED Blink
-            if (event.step % 4 === 0) {
-                const led = document.getElementById('activity-led');
-                if(led && !document.hidden) { // Only animate if visible to save CPU
-                    led.style.backgroundColor = '#fff';
-                    led.style.boxShadow = '0 0 10px #fff';
-                    setTimeout(() => {
-                        led.style.backgroundColor = ''; 
-                        led.style.boxShadow = '';
-                    }, 50);
+        // Update Track Bar (Move highlight)
+        if (event.step === 0) { // On block change/start
+             renderTrackBar();
+        }
+
+        // Update Matrix (Only if looking at the playing block)
+        if (event.block === AppState.editingBlock) {
+            if (lastDrawnStep !== event.step) {
+                window.timeMatrix.highlightPlayingStep(event.step);
+                
+                // LED Blink
+                if (event.step % 4 === 0) {
+                    const led = document.getElementById('activity-led');
+                    if(led && !document.hidden) {
+                        led.style.backgroundColor = '#fff';
+                        led.style.boxShadow = '0 0 10px #fff';
+                        setTimeout(() => {
+                            led.style.backgroundColor = ''; 
+                            led.style.boxShadow = '';
+                        }, 50);
+                    }
                 }
+                lastDrawnStep = event.step;
             }
-            lastDrawnStep = event.step;
+        } else {
+             // If playing a different block than viewing, remove cursor from view
+             window.timeMatrix.highlightPlayingStep(-1);
         }
     }
 
     if (AppState.isPlaying) {
         drawFrameId = requestAnimationFrame(drawLoop);
+    }
+}
+
+// --- TRACK MANAGER ---
+
+function renderTrackBar() {
+    const container = document.getElementById('track-bar');
+    container.innerHTML = '';
+    
+    const blocks = window.timeMatrix.blocks;
+    const totalBlocks = blocks.length;
+    
+    document.getElementById('display-total-blocks').innerText = totalBlocks;
+    document.getElementById('display-current-block').innerText = AppState.editingBlock + 1;
+
+    blocks.forEach((_, index) => {
+        const el = document.createElement('div');
+        el.className = 'track-block';
+        el.innerText = index + 1;
+        
+        // Styles
+        if (index === AppState.editingBlock) el.classList.add('track-block-editing');
+        if (AppState.isPlaying && index === AppState.currentPlayBlock) el.classList.add('track-block-playing');
+        
+        el.onclick = () => {
+            AppState.editingBlock = index;
+            updateEditors(); // Refresh Matrix
+            renderTrackBar(); // Refresh styles
+        };
+        
+        container.appendChild(el);
+    });
+}
+
+function addBlock() {
+    window.timeMatrix.addBlock();
+    // Auto switch to new block
+    AppState.editingBlock = window.timeMatrix.blocks.length - 1;
+    updateEditors();
+    renderTrackBar();
+}
+
+function duplicateBlock() {
+    window.timeMatrix.duplicateBlock(AppState.editingBlock);
+    AppState.editingBlock++; // Move to the copy
+    updateEditors();
+    renderTrackBar();
+}
+
+function removeBlock() {
+    if(confirm('Delete this block?')) {
+        window.timeMatrix.removeBlock(AppState.editingBlock);
+        // Correct index if out of bounds
+        if (AppState.editingBlock >= window.timeMatrix.blocks.length) {
+            AppState.editingBlock = window.timeMatrix.blocks.length - 1;
+        }
+        updateEditors();
+        renderTrackBar();
     }
 }
 
@@ -190,14 +246,17 @@ function toggleTransport() {
             }
         }
 
-        AppState.currentStep = 0;
+        AppState.currentPlayStep = 0;
+        AppState.currentPlayBlock = 0; // Always start from block 0 (Song Mode)
+        // OR: AppState.currentPlayBlock = AppState.editingBlock; (Pattern Mode)
+        // For Song Mode, let's start from currently viewed block for convenience, or 0.
+        // Let's start from Editing Block to allow testing specific parts.
+        AppState.currentPlayBlock = AppState.editingBlock;
+
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = []; 
         
-        // Start Worker (Audio Clock)
         if(clockWorker) clockWorker.postMessage("start");
-        
-        // Start Visuals
         drawLoop();
 
     } else {
@@ -211,39 +270,19 @@ function toggleTransport() {
             }
         }
 
-        // Stop Worker
         if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId);
-        
-        // Reset Visuals
-        if(window.timeMatrix && window.timeMatrix.container) {
-            const old = window.timeMatrix.container.querySelector('.step-playing');
-            if (old) old.classList.remove('step-playing');
-        }
+        window.timeMatrix.highlightPlayingStep(-1);
+        renderTrackBar(); // Remove playing highlight
     }
 }
 
 // --- UI HANDLERS ---
 
-function togglePanelMode() {
-    const panel = document.getElementById('editor-panel');
-    const dockPlaceholder = document.getElementById('dock-placeholder');
-    const btn = document.getElementById('btn-dock-mode');
-    
-    if (AppState.panelMode === 'overlay') {
-        AppState.panelMode = 'docked';
-        panel.classList.remove('panel-overlay');
-        panel.classList.add('panel-docked');
-        dockPlaceholder.appendChild(panel);
-        btn.innerHTML = '<i data-lucide="maximize-2" class="w-4 h-4"></i>';
-    } else {
-        AppState.panelMode = 'overlay';
-        panel.classList.remove('panel-docked');
-        panel.classList.add('panel-overlay');
-        document.body.appendChild(panel);
-        btn.innerHTML = '<i data-lucide="minimize-2" class="w-4 h-4"></i>';
-    }
-    lucide.createIcons();
+function toggleMenu() {
+    const menu = document.getElementById('main-menu');
+    menu.classList.toggle('hidden');
+    menu.classList.toggle('flex');
 }
 
 function updateEditors() {
@@ -262,15 +301,19 @@ function updateEditors() {
         renderDrumRows(); 
     }
     
+    // Tell Matrix which block to render
     window.timeMatrix.selectedStep = AppState.selectedStep;
-    window.timeMatrix.render(AppState.activeView);
+    window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
 }
 
 function renderDrumRows() {
     const container = document.getElementById('editor-drum');
     if(!container) return;
     container.innerHTML = '';
-    const currentDrums = window.timeMatrix.pattern.drums[AppState.selectedStep];
+    
+    // Get Data from CURRENT Editing Block
+    const block = window.timeMatrix.blocks[AppState.editingBlock];
+    const currentDrums = block.drums[AppState.selectedStep];
 
     window.drumSynth.kits.forEach(kit => {
         const isActive = currentDrums.includes(kit.id);
@@ -286,9 +329,12 @@ function renderDrumRows() {
         btn.onclick = () => {
             initEngine();
             if (isActive) {
-                window.timeMatrix.pattern.drums[AppState.selectedStep] = currentDrums.filter(d => d !== kit.id);
+                // Remove
+                const idx = currentDrums.indexOf(kit.id);
+                if (idx > -1) currentDrums.splice(idx, 1);
             } else {
-                window.timeMatrix.pattern.drums[AppState.selectedStep].push(kit.id);
+                // Add
+                currentDrums.push(kit.id);
                 window.drumSynth.play(kit.id, audioCtx.currentTime);
             }
             updateEditors();
@@ -300,97 +346,125 @@ function renderDrumRows() {
 // --- LISTENERS ---
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Global Buttons
     document.getElementById('btn-play').onclick = toggleTransport;
     document.getElementById('start-overlay').onclick = initEngine;
-    document.getElementById('btn-dock-mode').onclick = togglePanelMode;
+    document.getElementById('btn-dock-mode').onclick = () => {
+         // Dock/Undock logic from previous version (simplified here)
+         const panel = document.getElementById('editor-panel');
+         panel.classList.toggle('panel-docked');
+         panel.classList.toggle('panel-overlay');
+         const ph = document.getElementById('dock-placeholder');
+         if (panel.classList.contains('panel-docked')) ph.appendChild(panel);
+         else document.body.appendChild(panel);
+         lucide.createIcons();
+    };
 
+    // Menu Logic
+    document.getElementById('btn-open-menu').onclick = toggleMenu;
+    document.getElementById('btn-menu-close').onclick = toggleMenu;
+    
+    document.getElementById('btn-menu-panic').onclick = () => {
+        initEngine(); // Reset context
+        if(window.drumSynth) window.drumSynth.createNoiseBuffer();
+        toggleMenu();
+        alert("Audio Engine Reset.");
+    };
+
+    document.getElementById('btn-menu-clear').onclick = () => {
+        if(confirm("Clear CURRENT block pattern?")) {
+            window.timeMatrix.clearBlock(AppState.editingBlock);
+            updateEditors();
+            toggleMenu();
+        }
+    };
+
+    document.getElementById('btn-menu-track-edit').onclick = () => {
+        AppState.trackEditMode = !AppState.trackEditMode;
+        const controls = document.getElementById('track-edit-controls');
+        if(AppState.trackEditMode) controls.classList.remove('hidden');
+        else controls.classList.add('hidden');
+        toggleMenu();
+    };
+
+    // Track Edit Controls
+    document.getElementById('btn-add-block').onclick = addBlock;
+    document.getElementById('btn-dup-block').onclick = duplicateBlock;
+    document.getElementById('btn-del-block').onclick = removeBlock;
+
+    // Parameters
     document.getElementById('bpm-input').onchange = (e) => {
         AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
     };
 
+    // Tabs
     const tabBass = document.getElementById('tab-bass');
     const tabDrum = document.getElementById('tab-drum');
-    const setActiveTab = (mode) => {
-        AppState.activeView = mode;
-        if(mode === 'bass') {
-            tabBass.classList.replace('text-gray-500', 'text-green-400');
-            tabBass.classList.replace('border-transparent', 'border-green-900');
-            tabBass.classList.add('bg-gray-800');
-            tabDrum.classList.replace('text-green-400', 'text-gray-500');
-            tabDrum.classList.replace('border-green-900', 'border-transparent');
-            tabDrum.classList.remove('bg-gray-800');
+    
+    const setTab = (view) => {
+        AppState.activeView = view;
+        const activeClass = ['text-green-400', 'bg-gray-800', 'border-green-900', 'shadow'];
+        const inactiveClass = ['text-gray-500', 'bg-transparent', 'border-transparent'];
+        
+        if (view === 'bass') {
+            tabBass.classList.add(...activeClass);
+            tabBass.classList.remove(...inactiveClass);
+            tabDrum.classList.remove(...activeClass);
+            tabDrum.classList.add(...inactiveClass);
         } else {
-            tabDrum.classList.replace('text-gray-500', 'text-green-400');
-            tabDrum.classList.replace('border-transparent', 'border-green-900');
-            tabDrum.classList.add('bg-gray-800');
-            tabBass.classList.replace('text-green-400', 'text-gray-500');
-            tabBass.classList.replace('border-green-900', 'border-transparent');
-            tabBass.classList.remove('bg-gray-800');
+            tabDrum.classList.add(...activeClass);
+            tabDrum.classList.remove(...inactiveClass);
+            tabBass.classList.remove(...activeClass);
+            tabBass.classList.add(...inactiveClass);
         }
         updateEditors();
     };
-    if(tabBass) tabBass.onclick = () => setActiveTab('bass');
-    if(tabDrum) tabDrum.onclick = () => setActiveTab('drum');
+    
+    tabBass.onclick = () => setTab('bass');
+    tabDrum.onclick = () => setTab('drum');
 
+    // Matrix Interaction
     window.addEventListener('stepSelect', (e) => {
         AppState.selectedStep = e.detail.index;
         updateEditors();
+        
+        // Preview Bass
         if (AppState.activeView === 'bass' && window.bassSynth && audioCtx) {
-            const data = window.timeMatrix.getStepData(AppState.selectedStep);
-            if (data.bass) window.bassSynth.play(data.bass.note, data.bass.octave, audioCtx.currentTime);
+            const block = window.timeMatrix.blocks[AppState.editingBlock];
+            const bass = block.bass[AppState.selectedStep];
+            if (bass) window.bassSynth.play(bass.note, bass.octave, audioCtx.currentTime);
         }
     });
 
-    // Synth Controls
-    const octDisplay = document.getElementById('oct-display');
-    document.getElementById('oct-up').onclick = () => {
-        if(AppState.currentOctave < 6) AppState.currentOctave++;
-        if(octDisplay) octDisplay.innerText = AppState.currentOctave;
-    };
-    document.getElementById('oct-down').onclick = () => {
-        if(AppState.currentOctave > 1) AppState.currentOctave--;
-        if(octDisplay) octDisplay.innerText = AppState.currentOctave;
-    };
-    
-    document.getElementById('dist-slider').oninput = (e) => {
-        AppState.distortionLevel = parseInt(e.target.value);
-        if(window.bassSynth) window.bassSynth.updateDistortionCurve(AppState.distortionLevel);
-    };
-
+    // Piano Keys
     document.querySelectorAll('.piano-key').forEach(key => {
         key.onclick = () => {
             initEngine();
             const note = key.dataset.note;
-            window.timeMatrix.pattern.bass[AppState.selectedStep] = { note: note, octave: AppState.currentOctave };
+            const block = window.timeMatrix.blocks[AppState.editingBlock];
+            
+            block.bass[AppState.selectedStep] = { note: note, octave: AppState.currentOctave };
             window.bassSynth.play(note, AppState.currentOctave, audioCtx.currentTime, 0.3, AppState.distortionLevel);
             updateEditors();
         };
     });
 
     document.getElementById('btn-delete-note').onclick = () => {
-        window.timeMatrix.pattern.bass[AppState.selectedStep] = null;
+        window.timeMatrix.blocks[AppState.editingBlock].bass[AppState.selectedStep] = null;
         updateEditors();
     };
 
-    document.getElementById('grid-selector').onchange = (e) => window.timeMatrix.setGridColumns(e.target.value);
-    document.getElementById('btn-reset').onclick = () => {
-        if(confirm('Clear all?')) {
-            window.timeMatrix.pattern.bass.fill(null);
-            window.timeMatrix.pattern.drums.forEach(d => d.length = 0);
-            updateEditors();
-        }
+    // Octave & Distortion
+    const octDisplay = document.getElementById('oct-display');
+    document.getElementById('oct-up').onclick = () => { if(AppState.currentOctave < 6) AppState.currentOctave++; octDisplay.innerText = AppState.currentOctave; };
+    document.getElementById('oct-down').onclick = () => { if(AppState.currentOctave > 1) AppState.currentOctave--; octDisplay.innerText = AppState.currentOctave; };
+    document.getElementById('dist-slider').oninput = (e) => {
+        AppState.distortionLevel = parseInt(e.target.value);
+        if(window.bassSynth) window.bassSynth.updateDistortionCurve(AppState.distortionLevel);
     };
 
-    if(AppState.panelMode === 'docked') {
-         const panel = document.getElementById('editor-panel');
-         const dockPlaceholder = document.getElementById('dock-placeholder');
-         if(panel && dockPlaceholder) {
-             panel.classList.remove('panel-overlay');
-             panel.classList.add('panel-docked');
-             dockPlaceholder.appendChild(panel);
-         }
-    }
-
+    // Init
+    renderTrackBar();
     updateEditors();
     lucide.createIcons();
 });
