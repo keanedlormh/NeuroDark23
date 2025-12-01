@@ -1,5 +1,5 @@
 /*
- * NEURODARK MAIN CONTROLLER v16 (Icon Fix)
+ * NEURODARK MAIN CONTROLLER v17 (Native)
  */
 
 const AppState = {
@@ -12,7 +12,7 @@ const AppState = {
     activeView: 'bass-1',
     currentOctave: 3,
     distortionLevel: 20,
-    trackEditMode: false
+    panelMode: 'docked'
 };
 
 let audioCtx = null;
@@ -29,36 +29,32 @@ let lastDrawnStep = -1;
 
 // --- BOOTSTRAP ---
 function bootstrap() {
-    window.logToScreen("Bootstrap started...");
-    
+    window.logToScreen("Bootstrap init...");
     try {
-        if(!window.timeMatrix) throw "TimeMatrix missing";
-        // Check for Class existence safely
-        if(typeof window.BassSynth === 'undefined') throw "BassSynth Class missing";
+        if(!window.timeMatrix) throw "TimeMatrix Missing";
+        if(typeof window.BassSynth === 'undefined') throw "BassSynth Class Missing";
 
+        // Default Synth
         if(bassSynths.length === 0) {
-            window.logToScreen("Creating default Bass-1");
-            const defSynth = new window.BassSynth('bass-1');
-            bassSynths.push(defSynth);
+            const def = new window.BassSynth('bass-1');
+            bassSynths.push(def);
             if(window.timeMatrix.registerTrack) window.timeMatrix.registerTrack('bass-1');
         }
 
         renderInstrumentTabs();
         renderTrackBar();
         updateEditors();
-        
-        window.logToScreen("Bootstrap Complete. Ready.");
+        window.logToScreen("System Ready.");
     } catch(e) {
-        window.logToScreen("Bootstrap Error: " + e, 'error');
-        console.error(e);
+        window.logToScreen("BOOT FAIL: " + e, 'error');
     }
 }
 
 // --- AUDIO INIT ---
 function initEngine() {
     if(audioCtx && audioCtx.state === 'running') return;
+    window.logToScreen("Starting Audio Engine...");
     
-    window.logToScreen("Initializing Audio Engine...");
     try {
         if(!audioCtx) {
             const AC = window.AudioContext || window.webkitAudioContext;
@@ -66,6 +62,7 @@ function initEngine() {
             masterGain = audioCtx.createGain();
             masterGain.gain.value = 0.6;
             
+            // Limitador
             const comp = audioCtx.createDynamicsCompressor();
             comp.threshold.value = -3;
             masterGain.connect(comp);
@@ -75,36 +72,21 @@ function initEngine() {
             if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
             if(!clockWorker) {
-                // Try absolute path fallback if relative fails
                 try {
                     clockWorker = new Worker('Synth/clock_worker.js');
-                } catch(err) {
-                    console.warn("Worker path error, ensure file structure");
-                }
-                
-                if(clockWorker) {
                     clockWorker.onmessage = (e) => { if(e.data === "tick") scheduler(); };
                     clockWorker.postMessage({interval: INTERVAL});
-                    window.logToScreen("Clock Worker Started");
-                }
+                } catch(e) { window.logToScreen("Worker Error: "+e, 'error'); }
             }
         }
         if(audioCtx.state === 'suspended') audioCtx.resume();
-        window.logToScreen("Audio Engine Running");
+        window.logToScreen("Audio Active.");
     } catch(e) {
-        window.logToScreen("Audio Init Failed: " + e, 'error');
+        window.logToScreen("Audio Init Fail: " + e, 'error');
     }
 }
 
-function globalUnlock() {
-    initEngine();
-    if(audioCtx && audioCtx.state === 'running') {
-        document.removeEventListener('click', globalUnlock);
-        document.removeEventListener('touchstart', globalUnlock);
-    }
-}
-
-// --- CORE LOGIC ---
+// --- CORE ---
 function addBassSynth() {
     const id = `bass-${bassSynths.length + 1}`;
     if(bassSynths.find(s=>s.id===id)) return;
@@ -117,11 +99,12 @@ function addBassSynth() {
     renderSynthMenu();
     renderInstrumentTabs();
     setTab(id);
+    window.logToScreen(`Added ${id}`);
 }
 
 function removeBassSynth(id) {
-    if(bassSynths.length <= 1) return alert("Min 1 synth required");
-    if(confirm(`Remove ${id}?`)) {
+    if(bassSynths.length <= 1) return alert("Min 1 synth.");
+    if(confirm(`Del ${id}?`)) {
         bassSynths = bassSynths.filter(s=>s.id!==id);
         window.timeMatrix.removeTrack(id);
         if(AppState.activeView===id) AppState.activeView = bassSynths[0].id;
@@ -149,10 +132,7 @@ function scheduleNote(step, block, time) {
     visualQueue.push({ step, block, time });
     
     const data = window.timeMatrix.getStepData(step, block);
-    
-    if(data.drums && window.drumSynth) {
-        data.drums.forEach(id => window.drumSynth.play(id, time));
-    }
+    if(data.drums && window.drumSynth) data.drums.forEach(id => window.drumSynth.play(id, time));
     
     if(data.tracks) {
         Object.keys(data.tracks).forEach(tid => {
@@ -176,7 +156,7 @@ function drawLoop() {
     const t = audioCtx.currentTime;
     while(visualQueue.length && visualQueue[0].time <= t) {
         const ev = visualQueue.shift();
-        if(ev.step === 0) renderTrackBar();
+        if(ev.step === 0) renderTrackBar(); // Update bar on beat 1
         
         if(ev.block === AppState.editingBlock) {
             if(lastDrawnStep !== ev.step) {
@@ -194,12 +174,16 @@ function drawLoop() {
 function blinkLed() {
     const led = document.getElementById('activity-led');
     if(led) {
-        led.classList.add('bg-white', 'shadow-white');
-        setTimeout(() => led.classList.remove('bg-white', 'shadow-white'), 50);
+        led.style.backgroundColor = '#fff';
+        led.style.boxShadow = '0 0 8px #fff';
+        setTimeout(() => { 
+            led.style.backgroundColor = ''; 
+            led.style.boxShadow = '';
+        }, 50);
     }
 }
 
-// --- UI ---
+// --- UI UPDATE (Sync) ---
 function renderInstrumentTabs() {
     const c = document.getElementById('instrument-tabs-container');
     if(!c) return;
@@ -208,7 +192,7 @@ function renderInstrumentTabs() {
     bassSynths.forEach(s => {
         const b = document.createElement('button');
         const active = AppState.activeView === s.id;
-        b.className = `flex-1 py-2 px-4 text-xs font-bold rounded border uppercase ${active ? 'text-green-400 bg-gray-800 border-green-900' : 'text-gray-500 border-transparent'}`;
+        b.className = `px-3 py-1 text-[10px] font-bold border uppercase ${active ? 'text-green-400 bg-gray-900 border-green-700' : 'text-gray-500 border-transparent'}`;
         b.innerText = s.id;
         b.onclick = () => setTab(s.id);
         c.appendChild(b);
@@ -216,7 +200,7 @@ function renderInstrumentTabs() {
     
     const d = document.createElement('button');
     const dActive = AppState.activeView === 'drum';
-    d.className = `flex-1 py-2 px-4 text-xs font-bold rounded border uppercase ${dActive ? 'text-green-400 bg-gray-800 border-green-900' : 'text-gray-500 border-transparent'}`;
+    d.className = `px-3 py-1 text-[10px] font-bold border uppercase ${dActive ? 'text-green-400 bg-gray-900 border-green-700' : 'text-gray-500 border-transparent'}`;
     d.innerText = "DRUMS";
     d.onclick = () => setTab('drum');
     c.appendChild(d);
@@ -227,10 +211,7 @@ function setTab(v) {
     renderInstrumentTabs();
     updateEditors();
     const s = bassSynths.find(sy=>sy.id===v);
-    if(s) {
-        const sl = document.getElementById('dist-slider');
-        if(sl) sl.value = s.params.distortion;
-    }
+    if(s) document.getElementById('dist-slider').value = s.params.distortion;
 }
 
 function renderTrackBar() {
@@ -238,10 +219,8 @@ function renderTrackBar() {
     if(!c) return;
     c.innerHTML = '';
     const blocks = window.timeMatrix.blocks;
-    const dispTotal = document.getElementById('display-total-blocks');
-    const dispCurr = document.getElementById('display-current-block');
-    if(dispTotal) dispTotal.innerText = blocks.length;
-    if(dispCurr) dispCurr.innerText = AppState.editingBlock + 1;
+    document.getElementById('display-total-blocks').innerText = blocks.length;
+    document.getElementById('display-current-block').innerText = AppState.editingBlock + 1;
     
     blocks.forEach((_, i) => {
         const el = document.createElement('div');
@@ -259,11 +238,9 @@ function updateEditors() {
     if(info) info.innerText = `STEP ${AppState.selectedStep+1} // ${AppState.activeView.toUpperCase()}`;
     
     if(AppState.activeView === 'drum') {
-        if(bEd) bEd.classList.add('hidden'); 
-        if(dEd) { dEd.classList.remove('hidden'); renderDrumRows(); }
+        bEd.classList.add('hidden'); dEd.classList.remove('hidden'); renderDrumRows();
     } else {
-        if(bEd) bEd.classList.remove('hidden'); 
-        if(dEd) dEd.classList.add('hidden');
+        bEd.classList.remove('hidden'); dEd.classList.add('hidden');
     }
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
@@ -276,17 +253,15 @@ function renderDrumRows() {
     const blk = window.timeMatrix.blocks[AppState.editingBlock];
     const cur = blk.drums[AppState.selectedStep];
     
-    // Safety check for drumsynth existence
     const kits = (window.drumSynth && window.drumSynth.kits) ? window.drumSynth.kits : [];
-
     kits.forEach(k => {
         const act = cur.includes(k.id);
         const b = document.createElement('button');
-        b.className = `w-full py-3 px-4 mb-2 rounded border flex justify-between items-center font-bold ${act ? 'bg-gray-800 border-green-500 text-green-400' : 'bg-transparent border-gray-700 text-gray-500'}`;
-        b.innerHTML = `<span>${k.name}</span><div class="w-3 h-3 rounded-full" style="background:${k.color}"></div>`;
+        b.className = `w-full py-2 px-3 mb-1 border flex justify-between items-center text-[10px] ${act ? 'bg-gray-900 border-green-700 text-green-400' : 'bg-transparent border-gray-800 text-gray-500'}`;
+        b.innerHTML = `<span>${k.name}</span><div class="w-2 h-2 rounded-full" style="background:${k.color}"></div>`;
         b.onclick = () => {
             initEngine();
-            if(act) { cur.splice(cur.indexOf(k.id), 1); } else { cur.push(k.id); window.drumSynth.play(k.id, audioCtx.currentTime); }
+            if(act) cur.splice(cur.indexOf(k.id), 1); else { cur.push(k.id); window.drumSynth.play(k.id, audioCtx.currentTime); }
             updateEditors();
         };
         c.appendChild(b);
@@ -299,44 +274,37 @@ function renderSynthMenu() {
     c.innerHTML = '';
     bassSynths.forEach(s => {
         const r = document.createElement('div');
-        r.className = 'flex justify-between bg-black p-2 rounded border border-gray-800';
-        r.innerHTML = `<span class="text-xs text-green-500">${s.id}</span><button class="text-[10px] text-red-500" onclick="removeBassSynth('${s.id}')">DEL</button>`;
+        r.className = 'flex justify-between bg-black p-2 border border-gray-800 text-xs';
+        r.innerHTML = `<span class="text-green-500">${s.id}</span><button class="text-red-500" onclick="removeBassSynth('${s.id}')">X</button>`;
         c.appendChild(r);
     });
 }
 
-// --- TRANSPORT ---
 function toggleTransport() {
     initEngine();
     AppState.isPlaying = !AppState.isPlaying;
     const btn = document.getElementById('btn-play');
-    const icon = btn ? btn.querySelector('svg') : null;
     
     if(AppState.isPlaying) {
-        if(btn) { btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]'); if(icon) icon.classList.add('text-green-500'); }
+        btn.innerHTML = "&#10074;&#10074;"; // Pause char
+        btn.classList.add('border-green-500', 'text-green-500');
+        
         AppState.currentPlayStep = 0;
         AppState.currentPlayBlock = AppState.editingBlock;
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = [];
         if(clockWorker) clockWorker.postMessage("start");
         drawLoop();
-        window.logToScreen("Transport: PLAY");
+        window.logToScreen("PLAY");
     } else {
-        if(btn) { btn.classList.remove('border-green-500', 'shadow-[0_0_20px_#00ff41]'); if(icon) icon.classList.remove('text-green-500'); }
+        btn.innerHTML = "&#9658;"; // Play char
+        btn.classList.remove('border-green-500', 'text-green-500');
+        
         if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId);
         window.timeMatrix.highlightPlayingStep(-1);
         renderTrackBar();
-        window.logToScreen("Transport: STOP");
-    }
-}
-
-// --- SAFETY UTILS ---
-function safeIconCreate() {
-    if(typeof lucide !== 'undefined' && lucide.createIcons) {
-        lucide.createIcons();
-    } else {
-        window.logToScreen("Lucide Icons not loaded yet", "warn");
+        window.logToScreen("STOP");
     }
 }
 
@@ -344,28 +312,54 @@ function safeIconCreate() {
 document.addEventListener('DOMContentLoaded', () => {
     bootstrap();
     
-    document.addEventListener('click', globalUnlock);
-    document.addEventListener('touchstart', globalUnlock);
+    // Unlock on interaction
+    const unlock = () => { initEngine(); document.removeEventListener('click', unlock); document.removeEventListener('touchstart', unlock); };
+    document.addEventListener('click', unlock);
+    document.addEventListener('touchstart', unlock);
     
+    // UI Events
     document.getElementById('btn-play').onclick = toggleTransport;
-    const menu = document.getElementById('main-menu');
-    const tMenu = () => { menu.classList.toggle('hidden'); menu.classList.toggle('flex'); };
-    document.getElementById('btn-open-menu').onclick = () => { renderSynthMenu(); tMenu(); };
-    document.getElementById('btn-menu-close').onclick = tMenu;
     
+    const menu = document.getElementById('main-menu');
+    const toggleMenu = () => { menu.classList.toggle('hidden'); menu.classList.toggle('flex'); };
+    document.getElementById('btn-open-menu').onclick = () => { renderSynthMenu(); toggleMenu(); };
+    document.getElementById('btn-menu-close').onclick = toggleMenu;
+    
+    // Log Panel
+    const logPanel = document.getElementById('sys-log-panel');
+    const logToggle = document.getElementById('btn-toggle-log-internal');
+    const logMenuBtn = document.getElementById('btn-toggle-log-menu');
+    
+    const toggleLog = () => {
+        if(logPanel.style.transform === 'translateY(-100%)') {
+            logPanel.style.transform = 'translateY(0)';
+            logToggle.innerText = "[HIDE]";
+        } else {
+            logPanel.style.transform = 'translateY(-100%)';
+            logToggle.innerText = "[SHOW]";
+        }
+    };
+    logToggle.onclick = toggleLog;
+    logMenuBtn.onclick = () => { toggleLog(); toggleMenu(); };
+
+    // Synth
     document.getElementById('btn-add-synth').onclick = addBassSynth;
     document.getElementById('btn-menu-panic').onclick = () => location.reload();
-    document.getElementById('btn-menu-clear').onclick = () => { if(confirm("Clear?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); tMenu(); }};
+    document.getElementById('btn-menu-clear').onclick = () => { if(confirm("Clear?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); toggleMenu(); }};
     
+    // Track
     document.getElementById('btn-add-block').onclick = () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length-1; updateEditors(); renderTrackBar(); };
     document.getElementById('btn-del-block').onclick = () => { if(confirm("Del?")) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length-1); updateEditors(); renderTrackBar(); }};
     
+    // Dock
     document.getElementById('btn-dock-mode').onclick = () => {
         const p = document.getElementById('editor-panel');
         p.classList.toggle('panel-docked'); p.classList.toggle('panel-overlay');
         const ph = document.getElementById('dock-placeholder');
-        if(p.classList.contains('panel-docked')) ph.appendChild(p); else document.body.appendChild(p);
-        safeIconCreate();
+        // Native icon swap
+        const btn = document.getElementById('btn-dock-mode');
+        if(p.classList.contains('panel-docked')) { ph.appendChild(p); btn.innerHTML = "&#9633;"; } 
+        else { document.body.appendChild(p); btn.innerHTML = "_"; }
     };
     
     // Matrix Tap
@@ -412,7 +406,4 @@ document.addEventListener('DOMContentLoaded', () => {
         const s = bassSynths.find(sy => sy.id === AppState.activeView);
         if(s) s.setDistortion(v);
     };
-    
-    // Final Safe Icon Init
-    safeIconCreate();
 });
