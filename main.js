@@ -1,5 +1,5 @@
 /*
- * NEURODARK MAIN CONTROLLER v9 (No Overlay)
+ * NEURODARK MAIN CONTROLLER v10 (Modular Synth Architecture)
  */
 
 // STATE
@@ -22,6 +22,10 @@ let audioCtx = null;
 let masterGain = null;
 let clockWorker = null;
 
+// SYNTH INSTANCES
+let bassSynths = []; // Array to hold bass instances
+let activeBassSynth = null; // The one currently being edited
+
 // SCHEDULING
 let nextNoteTime = 0.0;
 const SCHEDULE_AHEAD_TIME = 0.1;
@@ -35,7 +39,6 @@ let lastDrawnStep = -1;
 // --- INITIALIZATION ---
 
 function initEngine() {
-    // Si ya existe contexto y está corriendo, no hacemos nada
     if (audioCtx && audioCtx.state === 'running') return;
 
     if (!audioCtx) {
@@ -48,11 +51,22 @@ function initEngine() {
         const limiter = audioCtx.createDynamicsCompressor();
         limiter.threshold.value = -3;
         limiter.ratio.value = 12;
-        
         masterGain.connect(limiter);
         limiter.connect(audioCtx.destination);
 
-        if(window.bassSynth) window.bassSynth.init(audioCtx, masterGain);
+        // --- INSTANTIATE SYNTHS ---
+        
+        // Bass Synth 1
+        const bass1 = new BassSynth('bass-1');
+        bass1.init(audioCtx, masterGain);
+        bassSynths.push(bass1);
+        
+        // Set Active for UI
+        activeBassSynth = bassSynths[0];
+        // Ensure default distortion is set
+        activeBassSynth.setDistortion(AppState.distortionLevel);
+
+        // Drum Synth (Singleton for now)
         if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
         // Worker Setup
@@ -62,19 +76,17 @@ function initEngine() {
             clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
         }
         
-        console.log("Audio Engine: ONLINE");
+        console.log("Audio Engine: ONLINE (Modular)");
     }
 
-    // Siempre intentar reanudar (necesario tras primer click en el documento)
     if (audioCtx.state === 'suspended') {
         audioCtx.resume();
     }
 }
 
-// Global unlocker for first interaction
+// Global unlocker
 function globalUnlock() {
     initEngine();
-    // Remove listeners once unlocked to save resources
     if (audioCtx && audioCtx.state === 'running') {
         document.removeEventListener('click', globalUnlock);
         document.removeEventListener('touchstart', globalUnlock);
@@ -90,7 +102,6 @@ function nextNote() {
     
     AppState.currentPlayStep++;
     
-    // Loop / Block logic
     if (AppState.currentPlayStep >= window.timeMatrix.totalSteps) {
         AppState.currentPlayStep = 0;
         AppState.currentPlayBlock++;
@@ -105,9 +116,12 @@ function scheduleNote(stepNumber, blockIndex, time) {
 
     const data = window.timeMatrix.getStepData(stepNumber, blockIndex);
 
-    if (data.bass && window.bassSynth) {
-        window.bassSynth.play(data.bass.note, data.bass.octave, time, 0.25, AppState.distortionLevel);
+    // Play Bass (Currently forcing Bass 1, future logic will select synth based on track)
+    if (data.bass && activeBassSynth) {
+        // Note: Effects params are now handled by the synth state, not passed in play()
+        activeBassSynth.play(data.bass.note, data.bass.octave, time, 0.25);
     }
+    
     if (data.drums && window.drumSynth) {
         data.drums.forEach(id => window.drumSynth.play(id, time));
     }
@@ -133,7 +147,6 @@ function drawLoop() {
         if (event.block === AppState.editingBlock) {
             if (lastDrawnStep !== event.step) {
                 window.timeMatrix.highlightPlayingStep(event.step);
-                
                 if (event.step % 4 === 0) {
                     const led = document.getElementById('activity-led');
                     if(led && !document.hidden) {
@@ -186,7 +199,7 @@ function renderTrackBar() {
 }
 
 function toggleTransport() {
-    initEngine(); // Ensure ON
+    initEngine();
 
     AppState.isPlaying = !AppState.isPlaying;
     const btn = document.getElementById('btn-play');
@@ -203,7 +216,7 @@ function toggleTransport() {
         }
 
         AppState.currentPlayStep = 0;
-        AppState.currentPlayBlock = AppState.editingBlock; // Start from visible block
+        AppState.currentPlayBlock = AppState.editingBlock;
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = []; 
         
@@ -229,7 +242,6 @@ function toggleTransport() {
 
 function toggleMenu() {
     const menu = document.getElementById('main-menu');
-    // Force Lucide icons refresh when opening menu just in case
     if (menu.classList.contains('hidden')) {
         menu.classList.remove('hidden');
         menu.classList.add('flex');
@@ -296,11 +308,9 @@ function renderDrumRows() {
 // --- SETUP ---
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Attach Global Unlockers (Replaces Start Overlay)
     document.addEventListener('click', globalUnlock);
     document.addEventListener('touchstart', globalUnlock);
 
-    // 2. Buttons
     document.getElementById('btn-play').onclick = toggleTransport;
     document.getElementById('btn-open-menu').onclick = toggleMenu;
     document.getElementById('btn-menu-close').onclick = toggleMenu;
@@ -309,7 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initEngine();
         if(window.drumSynth) window.drumSynth.createNoiseBuffer();
         toggleMenu();
-        alert("Audio Reset.");
+        alert("Engine Reset.");
     };
 
     document.getElementById('btn-menu-clear').onclick = () => {
@@ -338,7 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
          lucide.createIcons();
     };
 
-    // Track Edit
     document.getElementById('btn-add-block').onclick = () => {
         window.timeMatrix.addBlock();
         AppState.editingBlock = window.timeMatrix.blocks.length - 1;
@@ -362,10 +371,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Params
     document.getElementById('bpm-input').onchange = (e) => AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
 
-    // Tabs
     const tabBass = document.getElementById('tab-bass');
     const tabDrum = document.getElementById('tab-drum');
     
@@ -391,25 +398,24 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBass.onclick = () => setTab('bass');
     tabDrum.onclick = () => setTab('drum');
 
-    // Matrix
     window.addEventListener('stepSelect', (e) => {
         AppState.selectedStep = e.detail.index;
         updateEditors();
-        if (AppState.activeView === 'bass' && window.bassSynth && audioCtx) {
+        if (AppState.activeView === 'bass' && activeBassSynth && audioCtx) {
             const block = window.timeMatrix.blocks[AppState.editingBlock];
             const bass = block.bass[AppState.selectedStep];
-            if (bass) window.bassSynth.play(bass.note, bass.octave, audioCtx.currentTime);
+            if (bass) activeBassSynth.play(bass.note, bass.octave, audioCtx.currentTime);
         }
     });
 
-    // Piano
     document.querySelectorAll('.piano-key').forEach(key => {
         key.onclick = () => {
             initEngine();
             const note = key.dataset.note;
             const block = window.timeMatrix.blocks[AppState.editingBlock];
             block.bass[AppState.selectedStep] = { note: note, octave: AppState.currentOctave };
-            window.bassSynth.play(note, AppState.currentOctave, audioCtx.currentTime, 0.3, AppState.distortionLevel);
+            // Play using instance
+            if(activeBassSynth) activeBassSynth.play(note, AppState.currentOctave, audioCtx.currentTime);
             updateEditors();
         };
     });
@@ -419,16 +425,16 @@ document.addEventListener('DOMContentLoaded', () => {
         updateEditors();
     };
 
-    // Octave & Distortion
     const octDisplay = document.getElementById('oct-display');
     document.getElementById('oct-up').onclick = () => { if(AppState.currentOctave < 6) AppState.currentOctave++; octDisplay.innerText = AppState.currentOctave; };
     document.getElementById('oct-down').onclick = () => { if(AppState.currentOctave > 1) AppState.currentOctave--; octDisplay.innerText = AppState.currentOctave; };
+    
+    // Updated Slider logic to use instance method
     document.getElementById('dist-slider').oninput = (e) => {
         AppState.distortionLevel = parseInt(e.target.value);
-        if(window.bassSynth) window.bassSynth.updateDistortionCurve(AppState.distortionLevel);
+        if(activeBassSynth) activeBassSynth.setDistortion(AppState.distortionLevel);
     };
 
-    // Init
     renderTrackBar();
     updateEditors();
     lucide.createIcons();
