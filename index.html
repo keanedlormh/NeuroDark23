@@ -3,120 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeuroDark Matrix | v16 Fixed</title>
+    <title>NeuroDark Matrix | Native</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- CDN alternativo más robusto -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="style.css">
     
+    <!-- LOGGER NATIVO -->
     <script>
         window.logToScreen = function(msg, type='info') {
-            const consoleEl = document.getElementById('debug-console');
+            const consoleEl = document.getElementById('sys-log-content');
             if(consoleEl) {
                 const line = document.createElement('div');
-                line.className = type === 'error' ? 'text-red-400' : 'text-green-400';
-                line.innerText = `> ${msg}`;
+                line.className = type === 'error' ? 'log-err' : 'log-info';
+                // Timestamp
+                const time = new Date().toLocaleTimeString().split(' ')[0];
+                line.innerText = `[${time}] ${msg}`;
                 consoleEl.appendChild(line);
                 consoleEl.scrollTop = consoleEl.scrollHeight;
             }
             console.log(`[ND] ${msg}`);
         }
+        window.onerror = function(msg, url, line) {
+            window.logToScreen(`ERR: ${msg} (L${line})`, 'error');
+        }
     </script>
 </head>
-<body class="bg-[#050505] text-[#e0e0e0]">
+<body class="bg-black text-gray-300 font-mono overflow-hidden fixed inset-0">
 
-    <!-- MENU -->
-    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4">
-        <h2 class="text-xl font-mono text-white tracking-widest mb-4 border-b border-green-500 pb-2">SYSTEM MENU</h2>
-        
-        <div class="w-72 bg-gray-900 border border-gray-700 rounded p-4 mb-4">
-            <h3 class="text-xs text-gray-500 mb-3 font-bold tracking-widest">SYNTHS</h3>
-            <div id="synth-list-container" class="flex flex-col gap-2 mb-3"></div>
-            <button id="btn-add-synth" class="w-full py-2 text-xs border border-green-700 text-green-500 hover:bg-green-900/30 rounded flex items-center justify-center gap-2">
-                ADD BASS
-            </button>
+    <!-- PANEL DE LOGS (Desplegable) -->
+    <div id="sys-log-panel" class="fixed top-0 left-0 w-full h-32 bg-black/90 border-b border-green-900 z-[200] transition-transform duration-300 flex flex-col font-mono text-[10px]">
+        <div class="bg-green-900/20 px-2 py-1 flex justify-between items-center border-b border-green-900/50">
+            <span class="text-green-500 font-bold tracking-widest">SYSTEM_LOG</span>
+            <button id="btn-toggle-log-internal" class="text-green-500 hover:text-white">[HIDE]</button>
         </div>
+        <div id="sys-log-content" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <div class="text-gray-500">Initializing Core Systems...</div>
+        </div>
+    </div>
 
-        <button id="btn-menu-clear" class="w-72 py-3 rounded border border-red-900 text-red-400 hover:bg-red-900/20 font-bold text-xs tracking-widest">CLEAR PATTERN</button>
-        <button id="btn-menu-panic" class="w-72 py-3 rounded border border-gray-600 text-white hover:bg-gray-800 font-bold text-xs tracking-widest mt-4">RELOAD APP</button>
-        <button id="btn-menu-close" class="mt-8 text-gray-400 border border-gray-700 px-6 py-2 rounded text-xs">[ CLOSE ]</button>
+    <!-- MENÚ MODAL -->
+    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4">
+        <div class="w-72 border border-green-900 p-6 bg-gray-900/80 rounded shadow-[0_0_20px_rgba(0,255,0,0.1)]">
+            <h2 class="text-xl text-white tracking-widest mb-6 border-b border-green-600 pb-2 text-center">SYSTEM MENU</h2>
+            
+            <div class="mb-6">
+                <h3 class="text-[10px] text-gray-500 mb-2 font-bold tracking-widest uppercase">Modules</h3>
+                <div id="synth-list-container" class="flex flex-col gap-1 mb-2"></div>
+                <button id="btn-add-synth" class="w-full py-2 text-xs border border-dashed border-green-700 text-green-500 hover:bg-green-900/20">
+                    + ADD MODULE
+                </button>
+            </div>
+
+            <div class="space-y-2">
+                <button id="btn-toggle-log-menu" class="w-full py-2 border border-gray-600 text-gray-300 hover:bg-gray-800 text-xs">TOGGLE LOG CONSOLE</button>
+                <button id="btn-menu-clear" class="w-full py-2 border border-red-900/50 text-red-400 hover:bg-red-900/20 text-xs">CLEAR PATTERN</button>
+                <button id="btn-menu-panic" class="w-full py-2 border border-red-600 text-white bg-red-900/50 hover:bg-red-800 text-xs font-bold animate-pulse">HARD RESET</button>
+            </div>
+
+            <button id="btn-menu-close" class="mt-6 w-full py-2 bg-gray-800 hover:bg-gray-700 text-xs text-white">RESUME SESSION</button>
+        </div>
     </div>
 
     <!-- HEADER -->
-    <header class="fixed top-0 left-0 w-full h-14 bg-black/90 backdrop-blur border-b border-gray-800 flex items-center justify-between px-4 z-50">
-        <div class="flex items-center gap-2">
-            <div id="activity-led" class="w-3 h-3 bg-green-900 rounded-full shadow-[0_0_5px_green]"></div>
-            <span class="text-lg tracking-widest font-bold glitch-text">NEURODARK</span>
+    <header class="h-14 border-b border-gray-800 flex items-center justify-between px-4 z-50 bg-black relative">
+        <div class="flex items-center gap-3">
+            <div id="activity-led" class="w-2 h-2 bg-green-900 rounded-full shadow-[0_0_5px_green]"></div>
+            <span class="text-lg font-bold tracking-widest text-white" style="text-shadow: 2px 0 #8000ff, -2px 0 #00ff00;">NEURODARK</span>
         </div>
-        <button id="btn-open-menu" class="w-10 h-10 flex items-center justify-center text-green-500 border border-gray-800 bg-gray-900/50 rounded hover:bg-gray-800">
-            <i data-lucide="menu" class="w-6 h-6"></i>
+        <button id="btn-open-menu" class="text-2xl text-green-500 hover:text-white focus:outline-none leading-none pb-1">
+            &#9776; <!-- Unicode Hamburger -->
         </button>
     </header>
 
-    <!-- WRAPPER -->
-    <div class="pt-20 pb-10 px-4 w-full max-w-3xl mx-auto flex flex-col gap-6">
-        
-        <!-- CONTROLES -->
-        <div class="flex flex-wrap justify-center items-center gap-6 bg-[#0a0a0a] p-4 rounded-xl border border-gray-800 shadow-lg">
-            <div class="flex flex-col items-center">
-                <label class="text-[9px] text-gray-500 font-mono tracking-widest">BPM</label>
-                <input type="number" id="bpm-input" value="174" class="bg-transparent text-green-500 font-bold text-2xl w-16 text-center focus:outline-none border-b border-gray-800">
-            </div>
+    <!-- ÁREA PRINCIPAL (Scrollable) -->
+    <div class="absolute top-14 bottom-0 left-0 right-0 overflow-y-auto custom-scroll pb-64">
+        <div class="px-4 py-6 w-full max-w-2xl mx-auto flex flex-col gap-6">
+            
+            <!-- CONTROLES -->
+            <div class="bg-[#0a0a0a] p-4 rounded border border-gray-800 flex justify-between items-center gap-4">
+                <div class="text-center">
+                    <label class="text-[9px] text-gray-500 block">BPM</label>
+                    <input type="number" id="bpm-input" value="174" class="bg-transparent text-green-500 font-bold text-2xl w-16 text-center border-b border-gray-800 focus:border-green-500 outline-none">
+                </div>
 
-            <button id="btn-play" class="w-20 h-20 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-700 shadow-lg active:scale-95 group">
-                <i data-lucide="play" class="w-8 h-8 text-gray-400 fill-current ml-1 group-hover:text-white"></i>
-            </button>
+                <button id="btn-play" class="w-16 h-16 rounded-full border-4 border-gray-800 flex items-center justify-center text-3xl text-gray-600 hover:text-green-500 hover:border-green-900 transition-all shadow-lg active:scale-95 pl-1">
+                    &#9658; <!-- Unicode Play -->
+                </button>
 
-            <div class="flex flex-col items-center">
-                <label class="text-[9px] text-gray-500 font-mono tracking-widest">BLOCK</label>
-                <div class="text-xs text-green-500 mt-2 font-mono"><span id="display-current-block">1</span> / <span id="display-total-blocks">1</span></div>
-            </div>
-        </div>
-
-        <!-- TRACK BAR -->
-        <div class="w-full relative">
-            <div class="flex justify-between items-end mb-1 px-1">
-                <span class="text-[10px] text-gray-500 tracking-widest font-mono">SONG</span>
-                <div class="flex gap-2">
-                    <button id="btn-add-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-400 border border-green-900">+ ADD</button>
-                    <button id="btn-del-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-red-400 border border-red-900">DEL</button>
+                <div class="text-center">
+                    <label class="text-[9px] text-gray-500 block">BLOCK</label>
+                    <div class="text-xs text-green-500 mt-2 font-mono">
+                        <span id="display-current-block">1</span>/<span id="display-total-blocks">1</span>
+                    </div>
                 </div>
             </div>
-            <div id="track-bar" class="w-full h-14 bg-[#0a0a0a] border border-gray-800 rounded flex items-center gap-2 px-2 overflow-x-auto custom-scroll whitespace-nowrap"></div>
-        </div>
 
-        <!-- TABS -->
-        <div id="instrument-tabs-container" class="flex flex-wrap justify-center gap-2 bg-gray-900/50 p-2 rounded-lg min-h-[50px]"></div>
+            <!-- TRACK BAR -->
+            <div>
+                <div class="flex justify-between items-end mb-2">
+                    <span class="text-[10px] text-gray-500 tracking-widest">SEQUENCE</span>
+                    <div class="flex gap-1">
+                        <button id="btn-add-block" class="px-2 py-1 bg-gray-900 border border-gray-700 hover:border-green-500 text-[10px] text-green-500 rounded">+</button>
+                        <button id="btn-del-block" class="px-2 py-1 bg-gray-900 border border-gray-700 hover:border-red-500 text-[10px] text-red-500 rounded">&times;</button>
+                    </div>
+                </div>
+                <div id="track-bar" class="h-12 border-t border-b border-gray-800 bg-[#080808] flex items-center gap-1 px-2 overflow-x-auto whitespace-nowrap custom-scroll"></div>
+            </div>
 
-        <!-- MATRIX -->
-        <div class="flex justify-center w-full">
-            <div id="matrix-container" class="grid gap-2 w-full select-none transition-all duration-300"></div>
+            <!-- TABS -->
+            <div id="instrument-tabs-container" class="flex flex-wrap gap-1"></div>
+
+            <!-- MATRIX -->
+            <div id="matrix-container" class="grid gap-1 w-full select-none"></div>
+            
+            <div class="h-10"></div> <!-- Spacer -->
         </div>
-        <div id="dock-placeholder" class="w-full"></div>
     </div>
 
-    <!-- EDITOR PANEL -->
-    <div id="editor-panel" class="panel-docked w-full bg-[#0f0f0f] border border-gray-800 rounded-lg flex flex-col shadow-xl overflow-hidden mt-4 mb-20">
-        <div class="h-9 bg-black flex items-center justify-between px-4 border-b border-gray-800 shrink-0">
-            <span id="step-info-display" class="text-[10px] font-mono text-gray-400 uppercase tracking-widest">Select Step</span>
-            <button id="btn-dock-mode" class="text-green-500 hover:text-white p-1"><i data-lucide="maximize-2" class="w-4 h-4"></i></button>
+    <!-- EDITOR PANEL (Docked/Overlay) -->
+    <div id="editor-panel" class="panel-docked fixed bottom-0 left-0 w-full bg-[#0a0a0a] border-t border-gray-800 flex flex-col z-40 transition-transform duration-300">
+        
+        <div class="h-8 bg-black flex items-center justify-between px-4 border-b border-gray-800">
+            <span id="step-info-display" class="text-[10px] text-gray-500">SELECT STEP</span>
+            <button id="btn-dock-mode" class="text-lg text-gray-500 hover:text-white leading-none">
+                &#9633; <!-- Unicode Square (Dock Toggle) -->
+            </button>
         </div>
 
-        <!-- BASS EDITOR -->
-        <div id="editor-bass" class="flex-1 p-3 flex flex-col gap-4">
-            <div class="flex justify-between items-center px-1">
-                <div class="flex items-center gap-2 bg-gray-900 rounded p-1 border border-gray-800">
-                    <span class="text-[9px] text-gray-500 font-bold px-1">OCT</span>
-                    <button id="oct-down" class="w-8 h-8 bg-gray-800 rounded text-sm text-white border border-gray-700">-</button>
-                    <span id="oct-display" class="text-sm font-mono w-6 text-center text-green-500 font-bold">3</span>
-                    <button id="oct-up" class="w-8 h-8 bg-gray-800 rounded text-sm text-white border border-gray-700">+</button>
+        <!-- BASS CONTROLS -->
+        <div id="editor-bass" class="flex-1 p-2 flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-1 bg-gray-900 rounded p-1">
+                    <button id="oct-down" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded">-</button>
+                    <span id="oct-display" class="w-6 text-center text-xs font-bold text-green-500">3</span>
+                    <button id="oct-up" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded">+</button>
                 </div>
-                <div class="flex-1 ml-4 flex flex-col">
-                    <label class="text-[9px] text-gray-500">DISTORTION</label>
-                    <input type="range" id="dist-slider" min="0" max="100" value="20" class="w-full">
+                <div class="flex-1 ml-4 flex items-center gap-2">
+                    <label class="text-[9px] text-gray-500">FX</label>
+                    <input type="range" id="dist-slider" min="0" max="100" value="20" class="flex-1 h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer">
                 </div>
             </div>
-            <div class="grid grid-cols-7 gap-1 flex-1 min-h-[120px] bg-black/50 p-2 rounded border border-gray-800">
+
+            <!-- TECLADO VISUAL -->
+            <div class="grid grid-cols-7 gap-1 h-24 bg-gray-900/50 p-1 rounded">
+                <!-- Blancas -->
                 <button class="piano-key white-key" data-note="C">C</button>
                 <button class="piano-key white-key" data-note="D">D</button>
                 <button class="piano-key white-key" data-note="E">E</button>
@@ -124,6 +153,7 @@
                 <button class="piano-key white-key" data-note="G">G</button>
                 <button class="piano-key white-key" data-note="A">A</button>
                 <button class="piano-key white-key" data-note="B">B</button>
+                <!-- Negras (Fila 2 visual) -->
                 <button class="piano-key black-key" data-note="C#">C#</button>
                 <button class="piano-key black-key" data-note="D#">D#</button>
                 <div class="pointer-events-none"></div>
@@ -132,15 +162,13 @@
                 <button class="piano-key black-key" data-note="A#">A#</button>
                 <div class="pointer-events-none"></div>
             </div>
-            <button id="btn-delete-note" class="w-full py-2 bg-red-900/10 text-red-500 text-[10px] border border-red-900/30 rounded font-bold tracking-widest">CLEAR NOTE</button>
+            
+            <button id="btn-delete-note" class="w-full py-1 text-[10px] text-red-500 border border-red-900/30 hover:bg-red-900/10 rounded">CLEAR NOTE</button>
         </div>
 
-        <!-- DRUM EDITOR -->
-        <div id="editor-drum" class="hidden flex-1 p-3 flex flex-col gap-2 overflow-y-auto custom-scroll max-h-[300px]"></div>
+        <!-- DRUM CONTROLS -->
+        <div id="editor-drum" class="hidden flex-1 p-2 overflow-y-auto custom-scroll"></div>
     </div>
-
-    <!-- DEBUG CONSOLE -->
-    <div id="debug-console" class="fixed bottom-0 right-0 w-64 h-32 bg-black/80 text-[10px] font-mono p-2 overflow-y-auto z-[200] pointer-events-none border-t border-l border-gray-800"></div>
 
     <!-- MÓDULOS -->
     <script src="Synth/effects/distortion.js"></script>
