@@ -10,17 +10,8 @@
 </head>
 <body class="bg-[#050505] text-[#e0e0e0]">
 
-    <!-- OVERLAY DE INICIO -->
-    <div id="start-overlay" class="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center cursor-pointer">
-        <div class="text-green-500 animate-pulse mb-4">
-            <i data-lucide="power" class="w-16 h-16"></i>
-        </div>
-        <h1 class="text-2xl font-mono text-white tracking-widest glitch-text">SYSTEM READY</h1>
-        <p class="text-gray-500 text-xs mt-2">TAP TO INITIALIZE ENGINE</p>
-    </div>
-
     <!-- MENÚ MODAL (Oculto por defecto) -->
-    <div id="main-menu" class="fixed inset-0 z-[90] bg-black/90 backdrop-blur hidden flex-col items-center justify-center gap-4 transition-opacity">
+    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4 transition-opacity">
         <h2 class="text-2xl font-mono text-white tracking-widest mb-6 border-b border-green-500 pb-2">MAIN MENU</h2>
         
         <button id="btn-menu-track-edit" class="menu-item text-green-400 border border-green-900 w-64 py-3 rounded hover:bg-green-900/20 font-bold tracking-widest">
@@ -35,19 +26,20 @@
             ! PANIC / RESET AUDIO !
         </button>
 
-        <button id="btn-menu-close" class="mt-8 text-gray-500 hover:text-white">
+        <button id="btn-menu-close" class="mt-8 text-gray-400 border border-gray-700 px-6 py-2 rounded hover:text-white hover:border-white transition-all">
             [ CLOSE MENU ]
         </button>
     </div>
 
     <!-- HEADER -->
-    <header class="fixed top-0 left-0 w-full h-14 bg-black/90 backdrop-blur border-b border-gray-800 flex items-center justify-between px-4 z-50">
+    <header class="fixed top-0 left-0 w-full h-14 bg-black/90 backdrop-blur border-b border-gray-800 flex items-center justify-between px-4 z-50 shadow-lg">
         <div class="flex items-center gap-2">
             <div id="activity-led" class="w-3 h-3 bg-green-900 rounded-full shadow-[0_0_5px_green] transition-colors duration-100"></div>
-            <span class="text-lg tracking-widest glitch-text">NEURODARK</span>
+            <span class="text-lg tracking-widest glitch-text font-bold">NEURODARK</span>
         </div>
-        <!-- Botón Menú -->
-        <button id="btn-open-menu" class="text-gray-300 hover:text-white p-2">
+        
+        <!-- Botón Menú (Estilo Reforzado) -->
+        <button id="btn-open-menu" class="flex items-center justify-center w-10 h-10 text-green-500 border border-gray-800 bg-gray-900/50 rounded hover:bg-gray-800 hover:text-white hover:border-gray-600 transition-all active:scale-95">
             <i data-lucide="menu" class="w-6 h-6"></i>
         </button>
     </header>
@@ -78,19 +70,18 @@
             </div>
         </div>
 
-        <!-- TRACK BAR (NUEVO) -->
+        <!-- TRACK BAR -->
         <div class="w-full relative">
             <div class="flex justify-between items-end mb-1 px-1">
                 <span class="text-[10px] text-gray-500 tracking-widest font-mono">TRACK STRUCTURE</span>
-                <!-- Track Edit Controls (Hidden by default) -->
+                <!-- Track Edit Controls -->
                 <div id="track-edit-controls" class="hidden flex gap-2">
                     <button id="btn-add-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-400 border border-green-900 hover:bg-green-900">+ ADD</button>
-                    <button id="btn-dup-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-blue-400 border border-blue-900 hover:bg-blue-900">DUPLICATE</button>
+                    <button id="btn-dup-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-blue-400 border border-blue-900 hover:bg-blue-900">DUP</button>
                     <button id="btn-del-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-red-400 border border-red-900 hover:bg-red-900">DEL</button>
                 </div>
             </div>
             
-            <!-- Scrollable Track List -->
             <div id="track-bar" class="w-full h-14 bg-[#0a0a0a] border border-gray-800 rounded flex items-center gap-2 px-2 overflow-x-auto custom-scroll whitespace-nowrap">
                 <!-- Blocks injected via JS -->
             </div>
