@@ -1,123 +1,103 @@
 /*
- * BASS SYNTH MODULE (Instantiable & Modular)
- * Features: Internal Audio Bus & Pluggable Effects
+ * BASS SYNTH MODULE (Modular & Instantiable)
+ * Contains Oscillator, Filter, Envelope and Effects Chain.
  */
 
 class BassSynth {
-    constructor(name = "Bass") {
-        this.name = name;
+    constructor(id = 'bass-1') {
+        this.id = id;
         this.ctx = null;
-        
-        // Internal Routing
-        this.outputNode = null; // Where the synth sends final audio
-        this.dryBus = null;     // Internal bus before effects
+        this.output = null;
         
         // Effects Chain
-        this.distortion = new DistortionEffect();
+        this.distortionEffect = null;
         
-        // Settings
-        this.settings = {
-            cutoffBase: 800,
-            resonance: 4,
-            release: 0.3
+        // State
+        this.params = {
+            distortion: 20,
+            cutoffBase: 800
         };
     }
 
     /**
-     * Initialize Audio Context and Routing Graph
-     * @param {AudioContext} ctx 
-     * @param {AudioNode} destination - Usually Master Gain
+     * Initialize the synth with AudioContext and route to destination
      */
-    init(ctx, destination) {
-        this.ctx = ctx;
-        this.outputNode = destination;
+    init(audioContext, destinationNode) {
+        this.ctx = audioContext;
+        
+        // Create Main Output
+        this.output = this.ctx.createGain();
+        this.output.connect(destinationNode);
 
-        // 1. Create Internal Bus (Gain Node)
-        // All polyphonic voices will sum here BEFORE effects
-        this.dryBus = ctx.createGain();
-        this.dryBus.gain.value = 1.0; 
+        // Instantiate Effects
+        this.distortionEffect = new DistortionEffect(this.ctx);
+        this.distortionEffect.setAmount(this.params.distortion);
 
-        // 2. Initialize Effects
-        this.distortion.init(ctx);
-
-        // 3. Connect Graph: 
-        // Voices -> DryBus -> Distortion -> Output(Master)
-        this.dryBus.connect(this.distortion.getInput());
-        this.distortion.connect(this.outputNode);
+        // Final Routing: Effect -> Synth Output
+        this.distortionEffect.connect(this.output);
     }
 
     /**
-     * Update Effects Parameters
+     * Update specific effect parameters dynamically
      */
     setDistortion(amount) {
-        if (this.distortion) {
-            this.distortion.setDrive(amount);
+        this.params.distortion = amount;
+        if (this.distortionEffect) {
+            this.distortionEffect.setAmount(amount);
         }
     }
 
     /**
-     * Trigger a Note
+     * Trigger a note
      */
-    play(note, octave, time, duration = 0.25, distortionAmount = 0) {
+    play(note, octave, time, duration = 0.3) {
         if (!this.ctx) return;
 
-        // Ensure distortion is synced with current step param
-        // (In a future update, distortion could be per-step, or global)
-        this.setDistortion(distortionAmount);
-
-        // Frequencies Map
+        // --- 1. Sound Generation (Oscillators) ---
         const noteMap = {'C':0,'C#':1,'D':2,'D#':3,'E':4,'F':5,'F#':6,'G':7,'G#':8,'A':9,'A#':10,'B':11};
         const noteIndex = noteMap[note];
         if (noteIndex === undefined) return;
 
-        // MIDI Formula
         const midiNote = (octave + 1) * 12 + noteIndex;
         const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
 
-        // --- VOICE CREATION (Monophonic instance) ---
-        
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         const filter = this.ctx.createBiquadFilter();
-        
-        // 1. OSCILLATOR
+
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(freq, time);
-        osc.detune.setValueAtTime((Math.random() * 8) - 4, time); // Organic drift
+        osc.detune.setValueAtTime((Math.random() * 10) - 5, time); // Reese drift
 
-        // 2. FILTER
+        // --- 2. Filter (LPF) ---
         filter.type = 'lowpass';
-        // Dynamic cutoff based on settings + octave tracking
-        const cutoff = this.settings.cutoffBase + (octave * 150);
+        const cutoff = this.params.cutoffBase + (octave * 150);
         filter.frequency.setValueAtTime(cutoff, time);
-        filter.Q.value = this.settings.resonance;
-        // Filter Envelope (Wobble/Pluck)
+        filter.Q.value = 4;
         filter.frequency.exponentialRampToValueAtTime(80, time + duration);
 
-        // 3. AMPLITUDE ENVELOPE (VCA)
+        // --- 3. Amplitude Envelope (ADSR) ---
         gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.5, time + 0.015); // Fast Attack
-        gain.gain.exponentialRampToValueAtTime(0.001, time + duration); // Decay
+        gain.gain.linearRampToValueAtTime(0.5, time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
-        // 4. CONNECT TO INTERNAL BUS
-        // Instead of connecting to Master, we connect to this synth's dryBus
+        // --- 4. Internal Routing ---
+        // Osc -> Filter -> Amp -> Effects Chain Input
         osc.connect(filter);
         filter.connect(gain);
-        gain.connect(this.dryBus); 
+        
+        // Route to Distortion Effect Input
+        gain.connect(this.distortionEffect.input);
 
-        // 5. START/STOP
+        // Start/Stop
         osc.start(time);
-        osc.stop(time + duration + 0.1);
+        osc.stop(time + duration + 0.05);
 
-        // Cleanup
+        // Garbage collection helper
         osc.onended = () => {
             osc.disconnect();
-            filter.disconnect();
             gain.disconnect();
+            filter.disconnect();
         };
     }
 }
-
-// Default instance for compatibility with current Main.js
-// In the future, main.js can instantiate: const bass2 = new BassSynth("Sub");
-window.bassSynth = new BassSynth("MainBass");
