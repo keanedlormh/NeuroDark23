@@ -1,5 +1,5 @@
 /*
- * NEURODARK MAIN CONTROLLER v15 (Debug Edition)
+ * NEURODARK MAIN CONTROLLER v16 (Icon Fix)
  */
 
 const AppState = {
@@ -33,17 +33,16 @@ function bootstrap() {
     
     try {
         if(!window.timeMatrix) throw "TimeMatrix missing";
+        // Check for Class existence safely
         if(typeof window.BassSynth === 'undefined') throw "BassSynth Class missing";
 
-        // Setup Default Synth
         if(bassSynths.length === 0) {
             window.logToScreen("Creating default Bass-1");
             const defSynth = new window.BassSynth('bass-1');
             bassSynths.push(defSynth);
-            window.timeMatrix.registerTrack('bass-1');
+            if(window.timeMatrix.registerTrack) window.timeMatrix.registerTrack('bass-1');
         }
 
-        // Setup UI
         renderInstrumentTabs();
         renderTrackBar();
         updateEditors();
@@ -51,6 +50,7 @@ function bootstrap() {
         window.logToScreen("Bootstrap Complete. Ready.");
     } catch(e) {
         window.logToScreen("Bootstrap Error: " + e, 'error');
+        console.error(e);
     }
 }
 
@@ -71,16 +71,22 @@ function initEngine() {
             masterGain.connect(comp);
             comp.connect(audioCtx.destination);
 
-            // Connect Modules
             bassSynths.forEach(s => s.init(audioCtx, masterGain));
             if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
-            // Worker
             if(!clockWorker) {
-                clockWorker = new Worker('Synth/clock_worker.js');
-                clockWorker.onmessage = (e) => { if(e.data === "tick") scheduler(); };
-                clockWorker.postMessage({interval: INTERVAL});
-                window.logToScreen("Clock Worker Started");
+                // Try absolute path fallback if relative fails
+                try {
+                    clockWorker = new Worker('Synth/clock_worker.js');
+                } catch(err) {
+                    console.warn("Worker path error, ensure file structure");
+                }
+                
+                if(clockWorker) {
+                    clockWorker.onmessage = (e) => { if(e.data === "tick") scheduler(); };
+                    clockWorker.postMessage({interval: INTERVAL});
+                    window.logToScreen("Clock Worker Started");
+                }
             }
         }
         if(audioCtx.state === 'suspended') audioCtx.resume();
@@ -144,12 +150,10 @@ function scheduleNote(step, block, time) {
     
     const data = window.timeMatrix.getStepData(step, block);
     
-    // Drums
     if(data.drums && window.drumSynth) {
         data.drums.forEach(id => window.drumSynth.play(id, time));
     }
     
-    // Bass
     if(data.tracks) {
         Object.keys(data.tracks).forEach(tid => {
             const n = data.tracks[tid][step];
@@ -223,7 +227,10 @@ function setTab(v) {
     renderInstrumentTabs();
     updateEditors();
     const s = bassSynths.find(sy=>sy.id===v);
-    if(s) document.getElementById('dist-slider').value = s.params.distortion;
+    if(s) {
+        const sl = document.getElementById('dist-slider');
+        if(sl) sl.value = s.params.distortion;
+    }
 }
 
 function renderTrackBar() {
@@ -231,8 +238,10 @@ function renderTrackBar() {
     if(!c) return;
     c.innerHTML = '';
     const blocks = window.timeMatrix.blocks;
-    document.getElementById('display-total-blocks').innerText = blocks.length;
-    document.getElementById('display-current-block').innerText = AppState.editingBlock + 1;
+    const dispTotal = document.getElementById('display-total-blocks');
+    const dispCurr = document.getElementById('display-current-block');
+    if(dispTotal) dispTotal.innerText = blocks.length;
+    if(dispCurr) dispCurr.innerText = AppState.editingBlock + 1;
     
     blocks.forEach((_, i) => {
         const el = document.createElement('div');
@@ -250,9 +259,11 @@ function updateEditors() {
     if(info) info.innerText = `STEP ${AppState.selectedStep+1} // ${AppState.activeView.toUpperCase()}`;
     
     if(AppState.activeView === 'drum') {
-        bEd.classList.add('hidden'); dEd.classList.remove('hidden'); renderDrumRows();
+        if(bEd) bEd.classList.add('hidden'); 
+        if(dEd) { dEd.classList.remove('hidden'); renderDrumRows(); }
     } else {
-        bEd.classList.remove('hidden'); dEd.classList.add('hidden');
+        if(bEd) bEd.classList.remove('hidden'); 
+        if(dEd) dEd.classList.add('hidden');
     }
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
@@ -265,7 +276,10 @@ function renderDrumRows() {
     const blk = window.timeMatrix.blocks[AppState.editingBlock];
     const cur = blk.drums[AppState.selectedStep];
     
-    window.drumSynth.kits.forEach(k => {
+    // Safety check for drumsynth existence
+    const kits = (window.drumSynth && window.drumSynth.kits) ? window.drumSynth.kits : [];
+
+    kits.forEach(k => {
         const act = cur.includes(k.id);
         const b = document.createElement('button');
         b.className = `w-full py-3 px-4 mb-2 rounded border flex justify-between items-center font-bold ${act ? 'bg-gray-800 border-green-500 text-green-400' : 'bg-transparent border-gray-700 text-gray-500'}`;
@@ -299,7 +313,7 @@ function toggleTransport() {
     const icon = btn ? btn.querySelector('svg') : null;
     
     if(AppState.isPlaying) {
-        if(btn) { btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]'); icon.classList.add('text-green-500'); }
+        if(btn) { btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]'); if(icon) icon.classList.add('text-green-500'); }
         AppState.currentPlayStep = 0;
         AppState.currentPlayBlock = AppState.editingBlock;
         nextNoteTime = audioCtx.currentTime + 0.1;
@@ -308,12 +322,21 @@ function toggleTransport() {
         drawLoop();
         window.logToScreen("Transport: PLAY");
     } else {
-        if(btn) { btn.classList.remove('border-green-500', 'shadow-[0_0_20px_#00ff41]'); icon.classList.remove('text-green-500'); }
+        if(btn) { btn.classList.remove('border-green-500', 'shadow-[0_0_20px_#00ff41]'); if(icon) icon.classList.remove('text-green-500'); }
         if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId);
         window.timeMatrix.highlightPlayingStep(-1);
         renderTrackBar();
         window.logToScreen("Transport: STOP");
+    }
+}
+
+// --- SAFETY UTILS ---
+function safeIconCreate() {
+    if(typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+    } else {
+        window.logToScreen("Lucide Icons not loaded yet", "warn");
     }
 }
 
@@ -342,7 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         p.classList.toggle('panel-docked'); p.classList.toggle('panel-overlay');
         const ph = document.getElementById('dock-placeholder');
         if(p.classList.contains('panel-docked')) ph.appendChild(p); else document.body.appendChild(p);
-        lucide.createIcons();
+        safeIconCreate();
     };
     
     // Matrix Tap
@@ -390,5 +413,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if(s) s.setDistortion(v);
     };
     
-    lucide.createIcons();
+    // Final Safe Icon Init
+    safeIconCreate();
 });
