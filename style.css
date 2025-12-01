@@ -1,92 +1,60 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;800&display=swap');
-
+/* NEURODARK NATIVE STYLES */
 :root {
     --neon-green: #00ff41;
     --dark-bg: #050505;
 }
 
 body {
+    font-family: 'Courier New', Courier, monospace; /* Fuente segura del sistema */
     background-color: var(--dark-bg);
-    color: #e0e0e0;
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
-    overflow-x: hidden;
-    touch-action: manipulation;
+    color: #ccc;
 }
 
-/* TRACK BAR STYLES */
-.track-block {
-    min-width: 40px;
-    height: 36px;
-    border: 1px solid #333;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: #555;
-    background: #0f0f0f;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-}
-
-/* Bloque que se está escuchando */
-.track-block-playing {
-    border-color: #fff;
-    box-shadow: 0 0 10px rgba(255,255,255,0.3);
-    z-index: 10;
-}
-
-/* Bloque que se está editando (mostrado en la grid) */
-.track-block-editing {
-    background: #1a1a1a;
-    color: var(--neon-green);
-    border-color: var(--neon-green);
-}
-
-.track-block-playing.track-block-editing {
-    background: rgba(0, 255, 65, 0.1);
-}
-
-/* CUSTOM SCROLL */
+/* CUSTOM SCROLLBAR */
 .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
-.custom-scroll::-webkit-scrollbar-track { background: #111; }
-.custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+.custom-scroll::-webkit-scrollbar-track { background: #000; }
+.custom-scroll::-webkit-scrollbar-thumb { background: #333; }
 
-/* MODOS DEL PANEL */
-.panel-overlay {
-    position: fixed; bottom: 0; left: 0; width: 100%; height: 340px;
-    border-top: 1px solid #333; z-index: 50;
-}
-.panel-docked {
-    position: relative; width: 100%; height: auto; min-height: 300px;
-    border: 1px solid #333; border-radius: 8px; margin-top: 20px;
-    background-color: #0f0f0f; z-index: 10;
-}
-.panel-docked #btn-toggle-panel { display: none; }
+/* LOG */
+.log-info { color: #0f0; margin-bottom: 2px; }
+.log-err { color: #f55; margin-bottom: 2px; font-weight: bold; }
 
-/* STEP BOX */
+/* TRACK BAR */
+.track-block {
+    min-width: 36px; height: 30px;
+    background: #111; border: 1px solid #333;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; cursor: pointer; color: #666;
+}
+.track-block-editing { border-color: var(--neon-green); color: var(--neon-green); background: #002200; }
+.track-block-playing { box-shadow: 0 0 8px #fff; border-color: #fff; z-index: 10; }
+
+/* MATRIX STEPS */
 .step-box {
-    aspect-ratio: 1; background-color: #111; border: 1px solid #333;
-    border-radius: 6px; position: relative; cursor: pointer;
-    transition: all 0.1s; display: flex; align-items: center; justify-content: center; user-select: none;
+    aspect-ratio: 1; background: #111; border: 1px solid #222;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; position: relative;
 }
-.step-box:active { transform: scale(0.92); border-color: white; }
-.step-selected { border: 2px solid #fff !important; box-shadow: 0 0 15px rgba(255,255,255,0.15); z-index: 10; transform: scale(1.02); }
-.step-playing { background-color: rgba(255, 255, 255, 0.2) !important; border-color: #fff !important; box-shadow: inset 0 0 15px rgba(255,255,255,0.4); }
-.has-bass { background: radial-gradient(circle at center, rgba(0, 255, 65, 0.1) 0%, rgba(0,0,0,0) 70%); border-color: var(--neon-green); color: var(--neon-green); font-weight: 800; text-shadow: 0 0 8px rgba(0,255,65,0.4); }
+.step-box:active { border-color: #fff; }
+.step-playing { background: #222; border-color: #fff; box-shadow: inset 0 0 10px rgba(255,255,255,0.2); }
+.has-bass { 
+    background: #0a2a0a; border-color: var(--neon-green); color: var(--neon-green); 
+    box-shadow: 0 0 5px rgba(0,255,65,0.2);
+}
 
-/* PIANO & KEYS */
-.piano-key { border-radius: 4px; font-size: 10px; font-weight: bold; transition: all 0.05s; touch-action: none; box-shadow: 0 4px 0 rgba(0,0,0,0.5); }
-.piano-key:active { transform: translateY(3px); background-color: var(--neon-green) !important; color: black !important; }
-.white-key { background-color: #333; color: #ccc; }
-.black-key { background-color: #1a1a1a; color: #666; border: 1px solid #333; }
+/* PIANO */
+.piano-key { border-radius: 2px; font-size: 10px; font-weight: bold; }
+.white-key { background: #ccc; color: #000; height: 100%; }
+.black-key { background: #222; color: #777; border: 1px solid #444; height: 80%; margin-top: 2px; }
+.piano-key:active { background: var(--neon-green) !important; color: #000 !important; }
 
-/* SLIDERS */
-input[type=range] { -webkit-appearance: none; background: transparent; }
-input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--neon-green); margin-top: -6px; border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green); }
-input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #333; border-radius: 2px; }
+/* PANEL MODES */
+.panel-docked { height: 220px; } 
+.panel-overlay { height: 350px; } /* Más alto si se quiere desacoplar después */
 
-/* TEXT */
-.glitch-text { position: relative; text-shadow: 2px 0 rgba(188, 19, 254, 0.7), -2px 0 rgba(0, 255, 65, 0.7); animation: glitch-skew 3s infinite linear alternate-reverse; }
-@keyframes glitch-skew { 0% { transform: skew(0deg); } 20% { transform: skew(-2deg); } 40% { transform: skew(1deg); } 100% { transform: skew(0deg); } }
+/* SLIDER */
+input[type=range]::-webkit-slider-thumb { 
+    -webkit-appearance: none; height: 14px; width: 14px; 
+    background: var(--neon-green); border-radius: 50%; 
+    box-shadow: 0 0 5px var(--neon-green);
+}
