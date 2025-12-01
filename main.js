@@ -1,5 +1,5 @@
 /*
- * NEURODARK MAIN CONTROLLER v12 (Stable Init)
+ * NEURODARK MAIN CONTROLLER v13 (Error Handling)
  */
 
 // STATE
@@ -17,13 +17,13 @@ const AppState = {
     trackEditMode: false
 };
 
-// AUDIO GLOBALS
+// GLOBALS
 let audioCtx = null;
 let masterGain = null;
 let clockWorker = null;
 let bassSynths = [];
 
-// SCHEDULING
+// TIMING
 let nextNoteTime = 0.0;
 const SCHEDULE_AHEAD_TIME = 0.1;
 const LOOKAHEAD_INTERVAL = 25;
@@ -32,10 +32,41 @@ let visualQueue = [];
 let drawFrameId = null;
 let lastDrawnStep = -1;
 
-// --- INIT ---
+// --- CRITICAL: BOOTSTRAP ---
+
+function bootstrap() {
+    try {
+        console.log("Bootstrapping...");
+        
+        // 1. Validate Dependencies
+        if (!window.timeMatrix) throw new Error("TimeMatrix module missing");
+        if (!window.bassSynth) throw new Error("BassSynth module missing"); // Note: variable is class, not instance
+        // Note: BassSynth is a class name now, we don't check for window.bassSynth instance
+
+        // 2. Initial UI Render (Before Audio)
+        // Ensure Default Synth exists in logic
+        if (bassSynths.length === 0) {
+            console.log("Creating default Bass-1...");
+            const defaultSynth = new BassSynth('bass-1');
+            bassSynths.push(defaultSynth);
+            window.timeMatrix.registerTrack('bass-1');
+        }
+
+        renderInstrumentTabs();
+        renderTrackBar();
+        updateEditors();
+        
+        console.log("UI Rendered Successfully");
+
+    } catch (e) {
+        alert("Startup Error: " + e.message);
+        console.error(e);
+    }
+}
+
+// --- ENGINE INIT ---
 
 function initEngine() {
-    // Si el contexto existe y funciona, no reiniciamos, solo reanudamos
     if (audioCtx && audioCtx.state === 'running') return;
 
     try {
@@ -46,34 +77,33 @@ function initEngine() {
             masterGain = audioCtx.createGain();
             masterGain.gain.value = 0.6;
             
+            // Compressor
             const limiter = audioCtx.createDynamicsCompressor();
             limiter.threshold.value = -2;
-            limiter.ratio.value = 16;
+            limiter.ratio.value = 12;
             masterGain.connect(limiter);
             limiter.connect(audioCtx.destination);
 
-            // Init Synths
-            if (bassSynths.length === 0) {
-                // Crear Bass-1 por defecto si no existe
-                addBassSynth('bass-1', false); 
-            } else {
-                bassSynths.forEach(s => s.init(audioCtx, masterGain));
-            }
-
+            // Connect Synths
+            bassSynths.forEach(s => s.init(audioCtx, masterGain));
+            
             if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
             // Worker
             if (!clockWorker) {
-                // Ruta relativa: asume que clock_worker.js está en Synth/
-                clockWorker = new Worker('Synth/clock_worker.js');
-                clockWorker.onmessage = (e) => { if (e.data === "tick") scheduler(); };
-                clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
+                try {
+                    clockWorker = new Worker('Synth/clock_worker.js');
+                    clockWorker.onmessage = (e) => { if (e.data === "tick") scheduler(); };
+                    clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
+                } catch(err) {
+                    console.warn("Worker failed, fallback to main thread timer?");
+                    // Fallback could go here if needed
+                }
             }
-            
             console.log("Audio Engine: ONLINE");
         }
     } catch(e) {
-        console.error("Init Error:", e);
+        console.error("Audio Init Failed:", e);
     }
 
     if (audioCtx && audioCtx.state === 'suspended') {
@@ -81,18 +111,9 @@ function initEngine() {
     }
 }
 
-// Global unlocker
-function globalUnlock() {
-    initEngine();
-    if (audioCtx && audioCtx.state === 'running') {
-        document.removeEventListener('click', globalUnlock);
-        document.removeEventListener('touchstart', globalUnlock);
-    }
-}
+// --- CORE LOGIC ---
 
-// --- SYNTH MANAGER ---
-
-function addBassSynth(customId = null, shouldRender = true) {
+function addBassSynth(customId = null) {
     const id = customId || `bass-${bassSynths.length + 1}`;
     if (bassSynths.find(s => s.id === id)) return;
 
@@ -100,22 +121,17 @@ function addBassSynth(customId = null, shouldRender = true) {
     if (audioCtx) newSynth.init(audioCtx, masterGain);
     
     bassSynths.push(newSynth);
-    
-    if(window.timeMatrix) window.timeMatrix.registerTrack(id);
+    window.timeMatrix.registerTrack(id);
 
-    if (shouldRender) {
-        renderSynthMenu();
-        renderInstrumentTabs();
-        setTab(id);
-    }
+    renderSynthMenu();
+    renderInstrumentTabs();
+    setTab(id);
 }
 
 function removeBassSynth(id) {
-    if (bassSynths.length <= 1) {
-        alert("Must have at least one synth.");
-        return;
-    }
-    if (confirm(`Remove ${id}?`)) {
+    if (bassSynths.length <= 1) return alert("Keep at least one synth.");
+    
+    if (confirm(`Delete ${id}?`)) {
         bassSynths = bassSynths.filter(s => s.id !== id);
         window.timeMatrix.removeTrack(id);
         if (AppState.activeView === id) AppState.activeView = bassSynths[0].id;
@@ -149,12 +165,15 @@ function nextNote() {
 
 function scheduleNote(stepNumber, blockIndex, time) {
     visualQueue.push({ step: stepNumber, block: blockIndex, time: time });
+    
     const data = window.timeMatrix.getStepData(stepNumber, blockIndex);
 
+    // Drums
     if (data.drums && window.drumSynth) {
         data.drums.forEach(id => window.drumSynth.play(id, time));
     }
 
+    // Bass Tracks
     if (data.tracks) {
         Object.keys(data.tracks).forEach(trackId => {
             const noteData = data.tracks[trackId][stepNumber];
@@ -212,7 +231,7 @@ function renderSynthMenu() {
     bassSynths.forEach(synth => {
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between bg-black p-2 rounded border border-gray-800';
-        row.innerHTML = `<span class="text-xs font-mono text-green-500">${synth.id.toUpperCase()}</span><button class="text-[10px] text-red-500 hover:text-white px-2" onclick="removeBassSynth('${synth.id}')">REMOVE</button>`;
+        row.innerHTML = `<span class="text-xs font-mono text-green-500">${synth.id.toUpperCase()}</span><button class="text-[10px] text-red-500 hover:text-white px-2" onclick="removeBassSynth('${synth.id}')">DEL</button>`;
         container.appendChild(row);
     });
 }
@@ -280,6 +299,7 @@ function updateEditors() {
         bassEditor.classList.remove('hidden');
         drumEditor.classList.add('hidden');
     }
+    
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
 }
@@ -319,8 +339,9 @@ function toggleTransport() {
 
     if (AppState.isPlaying) {
         if(btn) { btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]'); icon.classList.add('text-green-500'); }
+        
         AppState.currentPlayStep = 0;
-        AppState.currentPlayBlock = AppState.editingBlock; 
+        AppState.currentPlayBlock = AppState.editingBlock; // Start from viewing block
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = []; 
         if(clockWorker) clockWorker.postMessage("start");
@@ -334,50 +355,33 @@ function toggleTransport() {
     }
 }
 
+// --- SETUP ---
+
 function toggleMenu() {
     const menu = document.getElementById('main-menu');
     if (menu.classList.contains('hidden')) { menu.classList.remove('hidden'); menu.classList.add('flex'); }
     else { menu.classList.add('hidden'); menu.classList.remove('flex'); }
 }
 
-// --- SETUP LISTENERS ---
 document.addEventListener('DOMContentLoaded', () => {
-    document.addEventListener('click', globalUnlock);
-    document.addEventListener('touchstart', globalUnlock);
+    // 1. Initial Render Call
+    bootstrap();
 
+    // 2. Bind Events
+    document.addEventListener('click', () => initEngine(), { once: true });
+    
     document.getElementById('btn-play').onclick = toggleTransport;
-    document.getElementById('btn-open-menu').onclick = toggleMenu;
+    document.getElementById('btn-open-menu').onclick = () => { renderSynthMenu(); toggleMenu(); };
     document.getElementById('btn-menu-close').onclick = toggleMenu;
+    
     document.getElementById('btn-add-synth').onclick = () => addBassSynth();
     document.getElementById('btn-menu-panic').onclick = () => location.reload();
-
-    document.getElementById('btn-menu-clear').onclick = () => {
-        if(confirm("Clear CURRENT block?")) {
-            window.timeMatrix.clearBlock(AppState.editingBlock);
-            updateEditors();
-            toggleMenu();
-        }
-    };
-    
-    document.getElementById('btn-menu-track-edit').onclick = () => {
-        AppState.trackEditMode = !AppState.trackEditMode;
-        const controls = document.getElementById('track-edit-controls');
-        if(AppState.trackEditMode) controls.classList.remove('hidden'); else controls.classList.add('hidden');
-        toggleMenu();
-    };
-
-    document.getElementById('btn-dock-mode').onclick = () => {
-         const panel = document.getElementById('editor-panel');
-         panel.classList.toggle('panel-docked');
-         panel.classList.toggle('panel-overlay');
-         const ph = document.getElementById('dock-placeholder');
-         if (panel.classList.contains('panel-docked')) ph.appendChild(panel); else document.body.appendChild(panel);
-         lucide.createIcons();
+    document.getElementById('btn-menu-clear').onclick = () => { 
+        if(confirm("Clear block?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); toggleMenu(); } 
     };
 
     document.getElementById('btn-add-block').onclick = () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length - 1; updateEditors(); renderTrackBar(); };
-    document.getElementById('btn-dup-block').onclick = () => { window.timeMatrix.duplicateBlock(AppState.editingBlock); AppState.editingBlock++; updateEditors(); renderTrackBar(); };
-    document.getElementById('btn-del-block').onclick = () => { if(confirm('Del?')) { window.timeMatrix.removeBlock(AppState.editingBlock); if (AppState.editingBlock >= window.timeMatrix.blocks.length) AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length - 1); updateEditors(); renderTrackBar(); }};
+    document.getElementById('btn-del-block').onclick = () => { if(confirm('Del?')) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length - 1); updateEditors(); renderTrackBar(); }};
 
     document.getElementById('bpm-input').onchange = (e) => AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
 
@@ -387,9 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const synth = getActiveSynth();
         if (synth && audioCtx) {
             const block = window.timeMatrix.blocks[AppState.editingBlock];
-            const tracks = block.tracks;
-            if(tracks && tracks[synth.id] && tracks[synth.id][AppState.selectedStep]) {
-                const n = tracks[synth.id][AppState.selectedStep];
+            if(block.tracks[synth.id] && block.tracks[synth.id][AppState.selectedStep]) {
+                const n = block.tracks[synth.id][AppState.selectedStep];
                 synth.play(n.note, n.octave, audioCtx.currentTime);
             }
         }
@@ -411,7 +414,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-delete-note').onclick = () => {
         const synth = getActiveSynth();
-        if(synth) { window.timeMatrix.blocks[AppState.editingBlock].tracks[synth.id][AppState.selectedStep] = null; updateEditors(); }
+        if(synth) {
+            window.timeMatrix.blocks[AppState.editingBlock].tracks[synth.id][AppState.selectedStep] = null;
+            updateEditors();
+        }
     };
 
     const octDisplay = document.getElementById('oct-display');
@@ -419,10 +425,5 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('oct-down').onclick = () => { if(AppState.currentOctave > 1) AppState.currentOctave--; octDisplay.innerText = AppState.currentOctave; };
     document.getElementById('dist-slider').oninput = (e) => { const val = parseInt(e.target.value); const synth = getActiveSynth(); if(synth) synth.setDistortion(val); };
 
-    // Initial Load sequence
-    // 1. Add default synth (will trigger renderSynthMenu, renderTabs, setTab)
-    addBassSynth('bass-1', true);
-    // 2. Render track bar explicitly
-    renderTrackBar();
     lucide.createIcons();
 });
