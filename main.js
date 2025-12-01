@@ -1,5 +1,5 @@
 /*
- * NEURODARK MAIN CONTROLLER v13 (Error Handling)
+ * NEURODARK MAIN CONTROLLER v14 (Fixed Bootstrap)
  */
 
 // STATE
@@ -39,17 +39,22 @@ function bootstrap() {
         console.log("Bootstrapping...");
         
         // 1. Validate Dependencies
-        if (!window.timeMatrix) throw new Error("TimeMatrix module missing");
-        if (!window.bassSynth) throw new Error("BassSynth module missing"); // Note: variable is class, not instance
-        // Note: BassSynth is a class name now, we don't check for window.bassSynth instance
+        // Check for TimeMatrix INSTANCE
+        if (!window.timeMatrix) throw new Error("TimeMatrix instance missing");
+        
+        // Check for BassSynth CLASS (FIXED CHECK)
+        if (typeof window.BassSynth === 'undefined') throw new Error("BassSynth Class missing");
 
-        // 2. Initial UI Render (Before Audio)
-        // Ensure Default Synth exists in logic
+        // 2. Initial Setup
         if (bassSynths.length === 0) {
             console.log("Creating default Bass-1...");
-            const defaultSynth = new BassSynth('bass-1');
+            const defaultSynth = new window.BassSynth('bass-1');
             bassSynths.push(defaultSynth);
-            window.timeMatrix.registerTrack('bass-1');
+            
+            // Register track safely
+            if(window.timeMatrix.registerTrack) {
+                window.timeMatrix.registerTrack('bass-1');
+            }
         }
 
         renderInstrumentTabs();
@@ -77,7 +82,6 @@ function initEngine() {
             masterGain = audioCtx.createGain();
             masterGain.gain.value = 0.6;
             
-            // Compressor
             const limiter = audioCtx.createDynamicsCompressor();
             limiter.threshold.value = -2;
             limiter.ratio.value = 12;
@@ -96,8 +100,7 @@ function initEngine() {
                     clockWorker.onmessage = (e) => { if (e.data === "tick") scheduler(); };
                     clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
                 } catch(err) {
-                    console.warn("Worker failed, fallback to main thread timer?");
-                    // Fallback could go here if needed
+                    console.warn("Worker setup failed", err);
                 }
             }
             console.log("Audio Engine: ONLINE");
@@ -111,13 +114,22 @@ function initEngine() {
     }
 }
 
-// --- CORE LOGIC ---
+// Global unlocker
+function globalUnlock() {
+    initEngine();
+    if (audioCtx && audioCtx.state === 'running') {
+        document.removeEventListener('click', globalUnlock);
+        document.removeEventListener('touchstart', globalUnlock);
+    }
+}
+
+// --- LOGIC ---
 
 function addBassSynth(customId = null) {
     const id = customId || `bass-${bassSynths.length + 1}`;
     if (bassSynths.find(s => s.id === id)) return;
 
-    const newSynth = new BassSynth(id);
+    const newSynth = new window.BassSynth(id);
     if (audioCtx) newSynth.init(audioCtx, masterGain);
     
     bassSynths.push(newSynth);
@@ -299,7 +311,6 @@ function updateEditors() {
         bassEditor.classList.remove('hidden');
         drumEditor.classList.add('hidden');
     }
-    
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
 }
@@ -341,7 +352,7 @@ function toggleTransport() {
         if(btn) { btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]'); icon.classList.add('text-green-500'); }
         
         AppState.currentPlayStep = 0;
-        AppState.currentPlayBlock = AppState.editingBlock; // Start from viewing block
+        AppState.currentPlayBlock = AppState.editingBlock; 
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = []; 
         if(clockWorker) clockWorker.postMessage("start");
@@ -355,21 +366,21 @@ function toggleTransport() {
     }
 }
 
-// --- SETUP ---
-
 function toggleMenu() {
     const menu = document.getElementById('main-menu');
     if (menu.classList.contains('hidden')) { menu.classList.remove('hidden'); menu.classList.add('flex'); }
     else { menu.classList.add('hidden'); menu.classList.remove('flex'); }
 }
 
+// --- SETUP LISTENERS ---
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initial Render Call
+    // START APP
     bootstrap();
 
-    // 2. Bind Events
-    document.addEventListener('click', () => initEngine(), { once: true });
-    
+    // LISTENERS
+    document.addEventListener('click', globalUnlock);
+    document.addEventListener('touchstart', globalUnlock);
+
     document.getElementById('btn-play').onclick = toggleTransport;
     document.getElementById('btn-open-menu').onclick = () => { renderSynthMenu(); toggleMenu(); };
     document.getElementById('btn-menu-close').onclick = toggleMenu;
@@ -385,6 +396,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('bpm-input').onchange = (e) => AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
 
+    // Matrix
     window.addEventListener('stepSelect', (e) => {
         AppState.selectedStep = e.detail.index;
         updateEditors();
@@ -414,16 +426,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-delete-note').onclick = () => {
         const synth = getActiveSynth();
-        if(synth) {
-            window.timeMatrix.blocks[AppState.editingBlock].tracks[synth.id][AppState.selectedStep] = null;
-            updateEditors();
-        }
+        if(synth) { window.timeMatrix.blocks[AppState.editingBlock].tracks[synth.id][AppState.selectedStep] = null; updateEditors(); }
     };
 
     const octDisplay = document.getElementById('oct-display');
     document.getElementById('oct-up').onclick = () => { if(AppState.currentOctave < 6) AppState.currentOctave++; octDisplay.innerText = AppState.currentOctave; };
     document.getElementById('oct-down').onclick = () => { if(AppState.currentOctave > 1) AppState.currentOctave--; octDisplay.innerText = AppState.currentOctave; };
     document.getElementById('dist-slider').oninput = (e) => { const val = parseInt(e.target.value); const synth = getActiveSynth(); if(synth) synth.setDistortion(val); };
+
+    // Layout
+    document.getElementById('btn-dock-mode').onclick = () => {
+         const panel = document.getElementById('editor-panel');
+         panel.classList.toggle('panel-docked');
+         panel.classList.toggle('panel-overlay');
+         const ph = document.getElementById('dock-placeholder');
+         if (panel.classList.contains('panel-docked')) ph.appendChild(panel); else document.body.appendChild(panel);
+         lucide.createIcons();
+    };
 
     lucide.createIcons();
 });
