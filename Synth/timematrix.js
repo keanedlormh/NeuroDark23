@@ -1,10 +1,6 @@
 /**
- * TIME MATRIX MODULE (Multi-Track Edition)
- * Data Structure:
- * Block {
- * tracks: { 'bass-1': [notes...], 'bass-2': [notes...] },
- * drums: [ ... ]
- * }
+ * TIME MATRIX MODULE (Multi-Track & Multi-Block)
+ * Fixed: Crash on render due to parentNode access.
  */
 
 class TimeMatrix {
@@ -26,9 +22,6 @@ class TimeMatrix {
 
     // --- TRACK MANAGEMENT ---
 
-    /**
-     * Ensures all blocks have a data array for the given synth ID
-     */
     registerTrack(synthId) {
         this.blocks.forEach(block => {
             if (!block.tracks[synthId]) {
@@ -46,8 +39,7 @@ class TimeMatrix {
     // --- BLOCK MANAGEMENT ---
 
     addBlock() {
-        // Create new block with empty tracks for all known synths
-        // We look at the first block to see what tracks exist, or start empty
+        // Inherit tracks from previous block or default to bass-1
         const knownTracks = this.blocks.length > 0 ? Object.keys(this.blocks[0].tracks) : ['bass-1'];
         
         const newTracks = {};
@@ -58,6 +50,24 @@ class TimeMatrix {
         this.blocks.push({
             tracks: newTracks,
             drums: new Array(this.totalSteps).fill().map(() => [])
+        });
+    }
+
+    duplicateBlock(index) {
+        if (index < 0 || index >= this.blocks.length) return;
+        const src = this.blocks[index];
+        
+        // Deep Copy
+        const newTracks = {};
+        Object.keys(src.tracks).forEach(key => {
+            newTracks[key] = [...src.tracks[key]];
+        });
+
+        const newDrums = src.drums.map(d => [...d]);
+
+        this.blocks.splice(index + 1, 0, {
+            tracks: newTracks,
+            drums: newDrums
         });
     }
 
@@ -73,43 +83,22 @@ class TimeMatrix {
         const block = this.blocks[index];
         if (!block) return;
         
-        // Clear all tracks
         Object.keys(block.tracks).forEach(key => {
             block.tracks[key].fill(null);
         });
-        // Clear drums
         block.drums.forEach(d => d.length = 0);
     }
 
     // --- DATA ACCESS ---
 
-    /**
-     * Get data for AUDIO playhead
-     */
     getStepData(stepIndex, blockIndex) {
         if (blockIndex < 0 || blockIndex >= this.blocks.length) return {};
         const block = this.blocks[blockIndex];
         
-        // Return drums and ALL tracks
         return {
-            tracks: block.tracks, // { 'bass-1': Note, 'bass-2': Note ... }
+            tracks: block.tracks,
             drums: block.drums[stepIndex] || []
         };
-    }
-
-    /**
-     * Get data for VISUAL editor (Specific Synth)
-     */
-    getEditorData(stepIndex, blockIndex, activeView) {
-        if (blockIndex < 0 || blockIndex >= this.blocks.length) return null;
-        const block = this.blocks[blockIndex];
-        
-        if (activeView === 'drum') {
-            return block.drums[stepIndex];
-        } else {
-            // Assume activeView is a synth ID (e.g., 'bass-1')
-            return block.tracks[activeView] ? block.tracks[activeView][stepIndex] : null;
-        }
     }
 
     // --- RENDERING ---
@@ -127,18 +116,21 @@ class TimeMatrix {
             const el = document.createElement('div');
             el.className = 'step-box';
             
-            // Draw content based on Active View (Synth ID or 'drum')
+            // Highlight selection
+            if (i === this.selectedStep) el.classList.add('step-selected');
+
+            // Draw content based on Active View
             if (activeView === 'drum') {
-                this.drawDrums(el, block.drums[i]);
+                this.drawDrums(el, block.drums[i], i);
             } else {
-                // It's a Synth Track
+                // Synth Track
                 const trackData = block.tracks[activeView];
-                // Ensure track exists, otherwise register it just in case
                 if (!trackData) {
+                    // Auto-repair if track missing
                     this.registerTrack(activeView);
-                    this.drawNote(el, null);
+                    this.drawNote(el, null, i);
                 } else {
-                    this.drawNote(el, trackData[i]);
+                    this.drawNote(el, trackData[i], i);
                 }
             }
 
@@ -151,7 +143,8 @@ class TimeMatrix {
         }
     }
 
-    drawNote(el, noteData) {
+    // FIXED: Now accepts 'index' as argument instead of calculating from DOM
+    drawNote(el, noteData, index) {
         if (noteData) {
             el.classList.add('has-bass');
             el.innerHTML = `
@@ -161,16 +154,18 @@ class TimeMatrix {
                 </div>`;
         } else {
             el.classList.remove('has-bass');
-            // Show number (index+1)
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${Array.prototype.indexOf.call(el.parentNode.children, el) + 1}</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${index + 1}</span>`;
         }
     }
 
-    drawDrums(el, drums) {
+    // FIXED: Now accepts 'index' as argument
+    drawDrums(el, drums, index) {
         el.classList.remove('has-bass');
         if (drums && drums.length > 0) {
             let html = '<div class="flex flex-wrap gap-1 justify-center items-center w-full px-1 pointer-events-none">';
-            const kits = window.drumSynth ? window.drumSynth.kits : [];
+            const kits = window.drumSynth ? window.drumSynth.kits : [
+                {id:'kick', color:'#f00'}, {id:'snare', color:'#ff0'}, {id:'hat', color:'#0ff'}, {id:'tom', color:'#f0f'}
+            ];
             
             kits.forEach(kit => {
                 if (drums.includes(kit.id)) {
@@ -180,14 +175,16 @@ class TimeMatrix {
             html += '</div>';
             el.innerHTML = html;
         } else {
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${Array.prototype.indexOf.call(el.parentNode.children, el) + 1}</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${index + 1}</span>`;
         }
     }
 
     highlightPlayingStep(index) {
         if (!this.container && !this.init()) return;
+        
         const old = this.container.querySelector('.step-playing');
         if (old) old.classList.remove('step-playing');
+        
         if (index >= 0 && index < this.container.children.length) {
             this.container.children[index].classList.add('step-playing');
         }
