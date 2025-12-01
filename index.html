@@ -3,31 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeuroDark Matrix | Modular Engine</title>
+    <title>NeuroDark Matrix | Multi-Synth</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-[#050505] text-[#e0e0e0]">
 
-    <!-- MENÚ MODAL -->
-    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4 transition-opacity">
-        <h2 class="text-2xl font-mono text-white tracking-widest mb-6 border-b border-green-500 pb-2">SYSTEM MENU</h2>
+    <!-- MENÚ PRINCIPAL -->
+    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4 transition-opacity overflow-y-auto py-10">
+        <h2 class="text-xl font-mono text-white tracking-widest mb-4 border-b border-green-500 pb-2">SYSTEM MENU</h2>
         
-        <button id="btn-menu-track-edit" class="menu-item text-green-400 border border-green-900 w-64 py-3 rounded hover:bg-green-900/20 font-bold tracking-widest">
-            TRACK EDIT MODE
-        </button>
-        
-        <button id="btn-menu-clear" class="menu-item text-red-400 border border-red-900 w-64 py-3 rounded hover:bg-red-900/20 font-bold tracking-widest">
-            CLEAR BLOCK
+        <!-- SECCIÓN DE SINTETIZADORES -->
+        <div class="w-72 bg-gray-900 border border-gray-700 rounded p-4 mb-4">
+            <h3 class="text-xs text-gray-500 mb-3 font-bold tracking-widest">ACTIVE SYNTHS</h3>
+            <div id="synth-list-container" class="flex flex-col gap-2 mb-3">
+                <!-- Se llena dinámicamente -->
+            </div>
+            <button id="btn-add-synth" class="w-full py-2 text-xs border border-green-700 text-green-500 hover:bg-green-900/30 rounded flex items-center justify-center gap-2">
+                <i data-lucide="plus" class="w-3 h-3"></i> ADD ANALOG BASS
+            </button>
+        </div>
+
+        <button id="btn-menu-clear" class="menu-item text-red-400 border border-red-900 w-72 py-3 rounded hover:bg-red-900/20 font-bold tracking-widest text-xs">
+            CLEAR CURRENT PATTERN
         </button>
 
-        <button id="btn-menu-panic" class="menu-item text-red-600 border border-red-900 w-64 py-3 rounded hover:bg-red-900/20 font-bold tracking-widest animate-pulse">
-            ! RESET ENGINE !
+        <button id="btn-menu-panic" class="menu-item text-white border border-gray-600 w-72 py-3 rounded hover:bg-gray-800 font-bold tracking-widest text-xs mt-4">
+            RESTART AUDIO ENGINE
         </button>
 
-        <button id="btn-menu-close" class="mt-8 text-gray-400 border border-gray-700 px-6 py-2 rounded hover:text-white hover:border-white transition-all">
-            [ EXIT ]
+        <button id="btn-menu-close" class="mt-8 text-gray-400 border border-gray-700 px-6 py-2 rounded hover:text-white hover:border-white transition-all text-xs">
+            [ CLOSE MENU ]
         </button>
     </div>
 
@@ -68,10 +75,9 @@
         <!-- TRACK BAR -->
         <div class="w-full relative">
             <div class="flex justify-between items-end mb-1 px-1">
-                <span class="text-[10px] text-gray-500 tracking-widest font-mono">TRACK STRUCTURE</span>
-                <div id="track-edit-controls" class="hidden flex gap-2">
+                <span class="text-[10px] text-gray-500 tracking-widest font-mono">SONG STRUCTURE</span>
+                <div class="flex gap-2">
                     <button id="btn-add-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-green-400 border border-green-900 hover:bg-green-900">+ ADD</button>
-                    <button id="btn-dup-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-blue-400 border border-blue-900 hover:bg-blue-900">DUP</button>
                     <button id="btn-del-block" class="text-[10px] bg-gray-800 px-2 py-1 rounded text-red-400 border border-red-900 hover:bg-red-900">DEL</button>
                 </div>
             </div>
@@ -79,14 +85,9 @@
             <div id="track-bar" class="w-full h-14 bg-[#0a0a0a] border border-gray-800 rounded flex items-center gap-2 px-2 overflow-x-auto custom-scroll whitespace-nowrap"></div>
         </div>
 
-        <!-- TABS -->
-        <div class="flex justify-center gap-2 bg-gray-900/50 p-1 rounded-lg">
-            <button id="tab-bass" class="flex-1 py-2 text-xs font-bold rounded text-green-400 bg-gray-800 shadow transition-all uppercase tracking-widest border border-green-900">
-                Bass Synth A
-            </button>
-            <button id="tab-drum" class="flex-1 py-2 text-xs font-bold rounded text-gray-500 hover:text-gray-300 transition-all uppercase tracking-widest border border-transparent">
-                Drum Unit
-            </button>
+        <!-- INSTRUMENT TABS (Dinámico) -->
+        <div id="instrument-tabs-container" class="flex flex-wrap justify-center gap-2 bg-gray-900/50 p-2 rounded-lg min-h-[50px]">
+            <!-- Se llena desde Main.js -->
         </div>
 
         <!-- MATRIX -->
@@ -117,7 +118,7 @@
                     <button id="oct-up" class="w-8 h-8 bg-gray-800 rounded text-sm text-white border border-gray-700">+</button>
                 </div>
                 <div class="flex-1 ml-4 flex flex-col">
-                    <label class="text-[9px] text-gray-500">DISTORTION (FX 1)</label>
+                    <label class="text-[9px] text-gray-500">DISTORTION FX</label>
                     <input type="range" id="dist-slider" min="0" max="100" value="20" class="w-full">
                 </div>
             </div>
@@ -148,7 +149,7 @@
         <div id="editor-drum" class="hidden flex-1 p-3 flex flex-col gap-2 overflow-y-auto custom-scroll max-h-[300px]"></div>
     </div>
 
-    <!-- CARGA DE MÓDULOS EN ORDEN -->
+    <!-- MÓDULOS -->
     <script src="Synth/effects/distortion.js"></script>
     <script src="Synth/bass_synth.js"></script>
     <script src="Synth/drum_synth.js"></script>
