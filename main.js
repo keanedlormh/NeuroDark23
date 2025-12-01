@@ -1,22 +1,16 @@
 /*
- * NEURODARK MAIN CONTROLLER v8 (Song Mode & Track Manager)
+ * NEURODARK MAIN CONTROLLER v9 (No Overlay)
  */
 
 // STATE
 const AppState = {
     isPlaying: false,
     bpm: 174,
-    
-    // Playhead (Audio)
     currentPlayStep: 0,
     currentPlayBlock: 0,
-    
-    // Editor (Visual)
     editingBlock: 0,
     selectedStep: 0,
     activeView: 'bass',
-    
-    // Settings
     currentOctave: 3,
     distortionLevel: 20,
     panelMode: 'docked',
@@ -41,6 +35,9 @@ let lastDrawnStep = -1;
 // --- INITIALIZATION ---
 
 function initEngine() {
+    // Si ya existe contexto y está corriendo, no hacemos nada
+    if (audioCtx && audioCtx.state === 'running') return;
+
     if (!audioCtx) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AudioContext({ latencyHint: 'interactive' });
@@ -58,25 +55,33 @@ function initEngine() {
         if(window.bassSynth) window.bassSynth.init(audioCtx, masterGain);
         if(window.drumSynth) window.drumSynth.init(audioCtx, masterGain);
 
-        // Worker
+        // Worker Setup
         if (!clockWorker) {
             clockWorker = new Worker('Synth/clock_worker.js');
             clockWorker.onmessage = (e) => { if (e.data === "tick") scheduler(); };
             clockWorker.postMessage({ interval: LOOKAHEAD_INTERVAL });
         }
-
-        const overlay = document.getElementById('start-overlay');
-        if(overlay) {
-            overlay.style.opacity = '0';
-            setTimeout(() => overlay.remove(), 500);
-        }
         
         console.log("Audio Engine: ONLINE");
     }
-    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    // Siempre intentar reanudar (necesario tras primer click en el documento)
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
 }
 
-// --- AUDIO SCHEDULER (Multi-Block Logic) ---
+// Global unlocker for first interaction
+function globalUnlock() {
+    initEngine();
+    // Remove listeners once unlocked to save resources
+    if (audioCtx && audioCtx.state === 'running') {
+        document.removeEventListener('click', globalUnlock);
+        document.removeEventListener('touchstart', globalUnlock);
+    }
+}
+
+// --- AUDIO SCHEDULER ---
 
 function nextNote() {
     const secondsPerBeat = 60.0 / AppState.bpm;
@@ -85,29 +90,19 @@ function nextNote() {
     
     AppState.currentPlayStep++;
     
-    // End of Block reached?
+    // Loop / Block logic
     if (AppState.currentPlayStep >= window.timeMatrix.totalSteps) {
         AppState.currentPlayStep = 0;
-        
-        // Advance Block
         AppState.currentPlayBlock++;
         if (AppState.currentPlayBlock >= window.timeMatrix.blocks.length) {
-            AppState.currentPlayBlock = 0; // Loop song
+            AppState.currentPlayBlock = 0;
         }
     }
 }
 
 function scheduleNote(stepNumber, blockIndex, time) {
-    // 1. Queue Visuals
-    // Only queue visual update if the playing block is the one being edited
-    // or we want to update the track bar
-    visualQueue.push({ 
-        step: stepNumber, 
-        block: blockIndex, 
-        time: time 
-    });
+    visualQueue.push({ step: stepNumber, block: blockIndex, time: time });
 
-    // 2. Audio Trigger
     const data = window.timeMatrix.getStepData(stepNumber, blockIndex);
 
     if (data.bass && window.bassSynth) {
@@ -133,17 +128,12 @@ function drawLoop() {
     while (visualQueue.length && visualQueue[0].time <= currentTime) {
         const event = visualQueue.shift();
         
-        // Update Track Bar (Move highlight)
-        if (event.step === 0) { // On block change/start
-             renderTrackBar();
-        }
+        if (event.step === 0) renderTrackBar();
 
-        // Update Matrix (Only if looking at the playing block)
         if (event.block === AppState.editingBlock) {
             if (lastDrawnStep !== event.step) {
                 window.timeMatrix.highlightPlayingStep(event.step);
                 
-                // LED Blink
                 if (event.step % 4 === 0) {
                     const led = document.getElementById('activity-led');
                     if(led && !document.hidden) {
@@ -158,7 +148,6 @@ function drawLoop() {
                 lastDrawnStep = event.step;
             }
         } else {
-             // If playing a different block than viewing, remove cursor from view
              window.timeMatrix.highlightPlayingStep(-1);
         }
     }
@@ -168,16 +157,15 @@ function drawLoop() {
     }
 }
 
-// --- TRACK MANAGER ---
+// --- UI MANAGERS ---
 
 function renderTrackBar() {
     const container = document.getElementById('track-bar');
+    if(!container) return;
     container.innerHTML = '';
     
     const blocks = window.timeMatrix.blocks;
-    const totalBlocks = blocks.length;
-    
-    document.getElementById('display-total-blocks').innerText = totalBlocks;
+    document.getElementById('display-total-blocks').innerText = blocks.length;
     document.getElementById('display-current-block').innerText = AppState.editingBlock + 1;
 
     blocks.forEach((_, index) => {
@@ -185,58 +173,26 @@ function renderTrackBar() {
         el.className = 'track-block';
         el.innerText = index + 1;
         
-        // Styles
         if (index === AppState.editingBlock) el.classList.add('track-block-editing');
         if (AppState.isPlaying && index === AppState.currentPlayBlock) el.classList.add('track-block-playing');
         
         el.onclick = () => {
             AppState.editingBlock = index;
-            updateEditors(); // Refresh Matrix
-            renderTrackBar(); // Refresh styles
+            updateEditors();
+            renderTrackBar();
         };
-        
         container.appendChild(el);
     });
 }
 
-function addBlock() {
-    window.timeMatrix.addBlock();
-    // Auto switch to new block
-    AppState.editingBlock = window.timeMatrix.blocks.length - 1;
-    updateEditors();
-    renderTrackBar();
-}
-
-function duplicateBlock() {
-    window.timeMatrix.duplicateBlock(AppState.editingBlock);
-    AppState.editingBlock++; // Move to the copy
-    updateEditors();
-    renderTrackBar();
-}
-
-function removeBlock() {
-    if(confirm('Delete this block?')) {
-        window.timeMatrix.removeBlock(AppState.editingBlock);
-        // Correct index if out of bounds
-        if (AppState.editingBlock >= window.timeMatrix.blocks.length) {
-            AppState.editingBlock = window.timeMatrix.blocks.length - 1;
-        }
-        updateEditors();
-        renderTrackBar();
-    }
-}
-
-// --- TRANSPORT ---
-
 function toggleTransport() {
-    initEngine();
+    initEngine(); // Ensure ON
 
     AppState.isPlaying = !AppState.isPlaying;
     const btn = document.getElementById('btn-play');
     const icon = btn ? btn.querySelector('svg') : null;
 
     if (AppState.isPlaying) {
-        // START
         if(btn) {
             btn.classList.add('border-green-500', 'shadow-[0_0_20px_#00ff41]');
             btn.classList.remove('border-gray-700');
@@ -247,12 +203,7 @@ function toggleTransport() {
         }
 
         AppState.currentPlayStep = 0;
-        AppState.currentPlayBlock = 0; // Always start from block 0 (Song Mode)
-        // OR: AppState.currentPlayBlock = AppState.editingBlock; (Pattern Mode)
-        // For Song Mode, let's start from currently viewed block for convenience, or 0.
-        // Let's start from Editing Block to allow testing specific parts.
-        AppState.currentPlayBlock = AppState.editingBlock;
-
+        AppState.currentPlayBlock = AppState.editingBlock; // Start from visible block
         nextNoteTime = audioCtx.currentTime + 0.1;
         visualQueue = []; 
         
@@ -260,7 +211,6 @@ function toggleTransport() {
         drawLoop();
 
     } else {
-        // STOP
         if(btn) {
             btn.classList.remove('border-green-500', 'shadow-[0_0_20px_#00ff41]');
             btn.classList.add('border-gray-700');
@@ -273,16 +223,20 @@ function toggleTransport() {
         if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId);
         window.timeMatrix.highlightPlayingStep(-1);
-        renderTrackBar(); // Remove playing highlight
+        renderTrackBar();
     }
 }
 
-// --- UI HANDLERS ---
-
 function toggleMenu() {
     const menu = document.getElementById('main-menu');
-    menu.classList.toggle('hidden');
-    menu.classList.toggle('flex');
+    // Force Lucide icons refresh when opening menu just in case
+    if (menu.classList.contains('hidden')) {
+        menu.classList.remove('hidden');
+        menu.classList.add('flex');
+    } else {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+    }
 }
 
 function updateEditors() {
@@ -301,7 +255,6 @@ function updateEditors() {
         renderDrumRows(); 
     }
     
-    // Tell Matrix which block to render
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
 }
@@ -311,7 +264,6 @@ function renderDrumRows() {
     if(!container) return;
     container.innerHTML = '';
     
-    // Get Data from CURRENT Editing Block
     const block = window.timeMatrix.blocks[AppState.editingBlock];
     const currentDrums = block.drums[AppState.selectedStep];
 
@@ -329,11 +281,9 @@ function renderDrumRows() {
         btn.onclick = () => {
             initEngine();
             if (isActive) {
-                // Remove
                 const idx = currentDrums.indexOf(kit.id);
                 if (idx > -1) currentDrums.splice(idx, 1);
             } else {
-                // Add
                 currentDrums.push(kit.id);
                 window.drumSynth.play(kit.id, audioCtx.currentTime);
             }
@@ -343,36 +293,27 @@ function renderDrumRows() {
     });
 }
 
-// --- LISTENERS ---
+// --- SETUP ---
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Global Buttons
-    document.getElementById('btn-play').onclick = toggleTransport;
-    document.getElementById('start-overlay').onclick = initEngine;
-    document.getElementById('btn-dock-mode').onclick = () => {
-         // Dock/Undock logic from previous version (simplified here)
-         const panel = document.getElementById('editor-panel');
-         panel.classList.toggle('panel-docked');
-         panel.classList.toggle('panel-overlay');
-         const ph = document.getElementById('dock-placeholder');
-         if (panel.classList.contains('panel-docked')) ph.appendChild(panel);
-         else document.body.appendChild(panel);
-         lucide.createIcons();
-    };
+    // 1. Attach Global Unlockers (Replaces Start Overlay)
+    document.addEventListener('click', globalUnlock);
+    document.addEventListener('touchstart', globalUnlock);
 
-    // Menu Logic
+    // 2. Buttons
+    document.getElementById('btn-play').onclick = toggleTransport;
     document.getElementById('btn-open-menu').onclick = toggleMenu;
     document.getElementById('btn-menu-close').onclick = toggleMenu;
-    
+
     document.getElementById('btn-menu-panic').onclick = () => {
-        initEngine(); // Reset context
+        initEngine();
         if(window.drumSynth) window.drumSynth.createNoiseBuffer();
         toggleMenu();
-        alert("Audio Engine Reset.");
+        alert("Audio Reset.");
     };
 
     document.getElementById('btn-menu-clear').onclick = () => {
-        if(confirm("Clear CURRENT block pattern?")) {
+        if(confirm("Clear CURRENT block?")) {
             window.timeMatrix.clearBlock(AppState.editingBlock);
             updateEditors();
             toggleMenu();
@@ -387,15 +328,42 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleMenu();
     };
 
-    // Track Edit Controls
-    document.getElementById('btn-add-block').onclick = addBlock;
-    document.getElementById('btn-dup-block').onclick = duplicateBlock;
-    document.getElementById('btn-del-block').onclick = removeBlock;
-
-    // Parameters
-    document.getElementById('bpm-input').onchange = (e) => {
-        AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
+    document.getElementById('btn-dock-mode').onclick = () => {
+         const panel = document.getElementById('editor-panel');
+         panel.classList.toggle('panel-docked');
+         panel.classList.toggle('panel-overlay');
+         const ph = document.getElementById('dock-placeholder');
+         if (panel.classList.contains('panel-docked')) ph.appendChild(panel);
+         else document.body.appendChild(panel);
+         lucide.createIcons();
     };
+
+    // Track Edit
+    document.getElementById('btn-add-block').onclick = () => {
+        window.timeMatrix.addBlock();
+        AppState.editingBlock = window.timeMatrix.blocks.length - 1;
+        updateEditors();
+        renderTrackBar();
+    };
+    document.getElementById('btn-dup-block').onclick = () => {
+        window.timeMatrix.duplicateBlock(AppState.editingBlock);
+        AppState.editingBlock++; 
+        updateEditors();
+        renderTrackBar();
+    };
+    document.getElementById('btn-del-block').onclick = () => {
+        if(confirm('Delete block?')) {
+            window.timeMatrix.removeBlock(AppState.editingBlock);
+            if (AppState.editingBlock >= window.timeMatrix.blocks.length) {
+                AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length - 1);
+            }
+            updateEditors();
+            renderTrackBar();
+        }
+    };
+
+    // Params
+    document.getElementById('bpm-input').onchange = (e) => AppState.bpm = Math.max(60, Math.min(240, parseInt(e.target.value)));
 
     // Tabs
     const tabBass = document.getElementById('tab-bass');
@@ -423,12 +391,10 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBass.onclick = () => setTab('bass');
     tabDrum.onclick = () => setTab('drum');
 
-    // Matrix Interaction
+    // Matrix
     window.addEventListener('stepSelect', (e) => {
         AppState.selectedStep = e.detail.index;
         updateEditors();
-        
-        // Preview Bass
         if (AppState.activeView === 'bass' && window.bassSynth && audioCtx) {
             const block = window.timeMatrix.blocks[AppState.editingBlock];
             const bass = block.bass[AppState.selectedStep];
@@ -436,13 +402,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Piano Keys
+    // Piano
     document.querySelectorAll('.piano-key').forEach(key => {
         key.onclick = () => {
             initEngine();
             const note = key.dataset.note;
             const block = window.timeMatrix.blocks[AppState.editingBlock];
-            
             block.bass[AppState.selectedStep] = { note: note, octave: AppState.currentOctave };
             window.bassSynth.play(note, AppState.currentOctave, audioCtx.currentTime, 0.3, AppState.distortionLevel);
             updateEditors();
