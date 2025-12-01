@@ -1,5 +1,5 @@
 /**
- * TIME MATRIX MODULE (Crash-Proof Edition)
+ * TIME MATRIX MODULE (v15 Debug)
  */
 
 class TimeMatrix {
@@ -8,34 +8,20 @@ class TimeMatrix {
         this.gridCols = 4;
         this.blocks = [];
         this.containerId = 'matrix-container'; 
-        this.container = null;
         
-        // Create initial block safely
+        // Init logic
         this.addBlock();
+        if(window.logToScreen) window.logToScreen("TimeMatrix Initialized");
     }
-
-    init() {
-        this.container = document.getElementById(this.containerId);
-        if (!this.container) {
-            console.error(`TimeMatrix Error: Container #${this.containerId} not found in DOM.`);
-            return false;
-        }
-        return true;
-    }
-
-    // --- DATA MANAGEMENT ---
 
     addBlock() {
-        // Safe track discovery
-        let knownTracks = ['bass-1'];
-        if (this.blocks.length > 0 && this.blocks[0].tracks) {
-            knownTracks = Object.keys(this.blocks[0].tracks);
+        const newTracks = { 'bass-1': new Array(this.totalSteps).fill(null) };
+        // Copy existing track keys if any
+        if (this.blocks.length > 0) {
+            Object.keys(this.blocks[0].tracks).forEach(k => {
+                newTracks[k] = new Array(this.totalSteps).fill(null);
+            });
         }
-        
-        const newTracks = {};
-        knownTracks.forEach(id => {
-            newTracks[id] = new Array(this.totalSteps).fill(null);
-        });
 
         this.blocks.push({
             tracks: newTracks,
@@ -43,99 +29,69 @@ class TimeMatrix {
         });
     }
 
-    registerTrack(synthId) {
-        this.blocks.forEach(block => {
-            if (!block.tracks) block.tracks = {}; // Safety
-            if (!block.tracks[synthId]) {
-                block.tracks[synthId] = new Array(this.totalSteps).fill(null);
-            }
+    registerTrack(id) {
+        this.blocks.forEach(b => {
+            if (!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null);
         });
     }
 
-    removeTrack(synthId) {
-        this.blocks.forEach(block => {
-            if (block.tracks && block.tracks[synthId]) {
-                delete block.tracks[synthId];
-            }
-        });
+    removeTrack(id) {
+        this.blocks.forEach(b => delete b.tracks[id]);
     }
 
-    duplicateBlock(index) {
-        if (index < 0 || index >= this.blocks.length) return;
-        
-        const original = this.blocks[index];
-        // Deep Clone Logic
+    clearBlock(idx) {
+        const b = this.blocks[idx];
+        if(!b) return;
+        Object.keys(b.tracks).forEach(k => b.tracks[k].fill(null));
+        b.drums.forEach(d => d.length = 0);
+    }
+
+    duplicateBlock(idx) {
+        if(!this.blocks[idx]) return;
+        const org = this.blocks[idx];
         const newTracks = {};
-        Object.keys(original.tracks).forEach(key => {
-            newTracks[key] = [...original.tracks[key]];
-        });
-
-        const newBlock = {
-            tracks: newTracks,
-            drums: original.drums.map(d => [...d])
-        };
-        
-        this.blocks.splice(index + 1, 0, newBlock);
+        Object.keys(org.tracks).forEach(k => newTracks[k] = [...org.tracks[k]]);
+        this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
     }
 
-    removeBlock(index) {
-        if (this.blocks.length <= 1) {
-            this.clearBlock(0);
-            return;
-        }
-        this.blocks.splice(index, 1);
+    removeBlock(idx) {
+        if(this.blocks.length <= 1) return this.clearBlock(0);
+        this.blocks.splice(idx, 1);
     }
 
-    clearBlock(index) {
-        const block = this.blocks[index];
-        if (!block) return;
-        
-        if (block.tracks) {
-            Object.keys(block.tracks).forEach(key => block.tracks[key].fill(null));
-        }
-        if (block.drums) {
-            block.drums.forEach(d => d.length = 0);
-        }
+    // -- DATA --
+    getStepData(step, blockIdx) {
+        const b = this.blocks[blockIdx];
+        if(!b) return {};
+        return { tracks: b.tracks, drums: b.drums[step] || [] };
     }
 
-    getStepData(stepIndex, blockIndex) {
-        if (blockIndex < 0 || blockIndex >= this.blocks.length) return {};
-        const block = this.blocks[blockIndex];
-        return {
-            tracks: block.tracks || {},
-            drums: block.drums[stepIndex] || []
-        };
-    }
-
-    // --- RENDERING ---
-
-    render(activeView, blockIndex) {
-        if (!this.init()) return;
-
-        this.container.innerHTML = '';
-        this.container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
-        
-        const block = this.blocks[blockIndex];
-        if (!block) {
-            console.error("TimeMatrix: Block not found at index " + blockIndex);
+    // -- RENDER --
+    render(activeView, blockIdx) {
+        const container = document.getElementById(this.containerId);
+        if(!container) {
+            if(window.logToScreen) window.logToScreen("Matrix Container Missing!", "error");
             return;
         }
 
-        for (let i = 0; i < this.totalSteps; i++) {
+        container.innerHTML = '';
+        container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
+
+        const block = this.blocks[blockIdx];
+        if(!block) {
+            if(window.logToScreen) window.logToScreen(`Block ${blockIdx} missing!`, "error");
+            return;
+        }
+
+        for(let i=0; i<this.totalSteps; i++) {
             const el = document.createElement('div');
             el.className = 'step-box';
             
-            if (activeView === 'drum') {
-                this.drawDrums(el, block.drums[i], i);
+            if(activeView === 'drum') {
+                this.drawDrums(el, block.drums[i]);
             } else {
-                // Ensure tracks object exists
-                if (!block.tracks) block.tracks = {};
-                
-                // If track missing, register it on the fly
-                if (!block.tracks[activeView]) {
-                    this.registerTrack(activeView);
-                }
-                
+                // Check if track exists, create if not
+                if(!block.tracks[activeView]) this.registerTrack(activeView);
                 this.drawNote(el, block.tracks[activeView][i], i);
             }
 
@@ -143,56 +99,45 @@ class TimeMatrix {
                 const event = new CustomEvent('stepSelect', { detail: { index: i } });
                 window.dispatchEvent(event);
             };
-
-            this.container.appendChild(el);
+            container.appendChild(el);
         }
     }
 
-    drawNote(el, noteData, index) {
-        if (noteData) {
+    drawNote(el, data, i) {
+        if(data) {
             el.classList.add('has-bass');
-            el.innerHTML = `
-                <div class="flex flex-col items-center justify-center w-full h-full pointer-events-none">
-                    <span class="text-xl font-bold tracking-tighter">${noteData.note}</span>
-                    <span class="text-[10px] opacity-60 font-mono">${noteData.octave}</span>
-                </div>`;
+            el.innerHTML = `<div class="flex flex-col items-center pointer-events-none"><span class="text-xl font-bold">${data.note}</span><span class="text-[10px] opacity-70">${data.octave}</span></div>`;
         } else {
             el.classList.remove('has-bass');
-            // Using index + 1 explicitly to avoid calculation errors
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${index + 1}</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${i+1}</span>`;
         }
     }
 
-    drawDrums(el, drums, index) {
+    drawDrums(el, drums) {
         el.classList.remove('has-bass');
-        if (drums && drums.length > 0) {
-            let html = '<div class="flex flex-wrap gap-1 justify-center items-center w-full px-1 pointer-events-none">';
-            const kits = window.drumSynth ? window.drumSynth.kits : [
-                {id:'kick', color:'red'}, {id:'snare', color:'yellow'}
-            ];
-            
-            kits.forEach(kit => {
-                if (drums.includes(kit.id)) {
-                    html += `<div class="w-2 h-2 rounded-full shadow-[0_0_5px_${kit.color}]" style="background:${kit.color}"></div>`;
-                }
+        if(drums && drums.length) {
+            let html = '<div class="flex flex-wrap gap-1 justify-center px-1 pointer-events-none">';
+            // Fallback colors if drumSynth not ready
+            const colors = {'kick':'#ff2222', 'snare':'#ffdd00', 'hat':'#00ccff', 'tom':'#bd00ff'};
+            drums.forEach(id => {
+                const col = (window.drumSynth && window.drumSynth.kits.find(k=>k.id===id)?.color) || colors[id] || '#fff';
+                html += `<div class="w-2 h-2 rounded-full shadow-[0_0_5px_${col}]" style="background:${col}"></div>`;
             });
-            html += '</div>';
-            el.innerHTML = html;
+            el.innerHTML = html + '</div>';
         } else {
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${index + 1}</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">.</span>`;
         }
     }
 
     highlightPlayingStep(index) {
-        if (!this.container) return; // Silent return
-        const old = this.container.querySelector('.step-playing');
-        if (old) old.classList.remove('step-playing');
-        
-        if (index >= 0 && index < this.container.children.length) {
-            this.container.children[index].classList.add('step-playing');
+        const container = document.getElementById(this.containerId);
+        if(!container) return;
+        const old = container.querySelector('.step-playing');
+        if(old) old.classList.remove('step-playing');
+        if(index >= 0 && container.children[index]) {
+            container.children[index].classList.add('step-playing');
         }
     }
 }
 
-// Global Instance
 window.timeMatrix = new TimeMatrix();
