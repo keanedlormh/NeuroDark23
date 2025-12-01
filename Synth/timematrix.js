@@ -1,6 +1,5 @@
 /**
- * TIME MATRIX MODULE (Robust Version)
- * Handles grid rendering, state management, and visual feedback.
+ * TIME MATRIX MODULE (Multi-Block Support)
  */
 
 class TimeMatrix {
@@ -8,74 +7,93 @@ class TimeMatrix {
         this.totalSteps = steps;
         this.gridCols = 4;
         
-        // Data Structure
-        this.pattern = {
-            bass: new Array(steps).fill(null),      // Format: { note: 'C', octave: 3 }
-            drums: new Array(steps).fill().map(() => []) // Format: ['kick', 'snare']
-        };
+        // Array of Blocks (Song Structure)
+        // Each block contains { bass: [], drums: [] }
+        this.blocks = [];
+        
+        // Initialize with one empty block
+        this.addBlock();
         
         this.selectedStep = 0;
         this.containerId = 'matrix-container'; 
         this.container = null;
     }
 
-    /**
-     * Initializes the matrix finding the DOM element.
-     * Safe to call multiple times.
-     */
     init() {
         this.container = document.getElementById(this.containerId);
-        if (!this.container) {
-            console.warn(`TimeMatrix: Container #${this.containerId} not found yet.`);
-            return false;
+        return !!this.container;
+    }
+
+    addBlock() {
+        this.blocks.push({
+            bass: new Array(this.totalSteps).fill(null),
+            drums: new Array(this.totalSteps).fill().map(() => [])
+        });
+    }
+
+    duplicateBlock(index) {
+        if (index < 0 || index >= this.blocks.length) return;
+        
+        // Deep copy of the block
+        const original = this.blocks[index];
+        const newBlock = {
+            bass: [...original.bass], // Copy bass array (objects inside are simple, but be careful if they become complex)
+            drums: original.drums.map(d => [...d]) // Deep copy of drums arrays
+        };
+        
+        // Insert after current
+        this.blocks.splice(index + 1, 0, newBlock);
+    }
+
+    removeBlock(index) {
+        if (this.blocks.length <= 1) {
+            // If only one block, just clear it
+            this.clearBlock(0);
+            return;
         }
-        return true;
+        this.blocks.splice(index, 1);
+    }
+
+    clearBlock(index) {
+        if (index < 0 || index >= this.blocks.length) return;
+        this.blocks[index].bass.fill(null);
+        this.blocks[index].drums.forEach(d => d.length = 0);
     }
 
     /**
-     * Updates the number of columns and redraws.
+     * Get data for AUDIO engine (Playhead)
      */
-    setGridColumns(cols) {
-        this.gridCols = parseInt(cols);
-        this.render();
-    }
-
-    /**
-     * Returns the musical data for a specific step.
-     * Used by the Audio Engine.
-     */
-    getStepData(index) {
-        if (index < 0 || index >= this.totalSteps) return {};
+    getStepData(stepIndex, blockIndex) {
+        if (blockIndex < 0 || blockIndex >= this.blocks.length) return {};
+        
+        const block = this.blocks[blockIndex];
         return {
-            bass: this.pattern.bass[index],
-            drums: this.pattern.drums[index] || []
+            bass: block.bass[stepIndex],
+            drums: block.drums[stepIndex] || []
         };
     }
 
     /**
-     * Renders the entire grid into the container.
+     * Render data for VISUAL editor (Editing Block)
      */
-    render(activeView = 'bass') {
-        if (!this.init()) return; // Safety check
+    render(activeView = 'bass', blockIndex = 0) {
+        if (!this.init()) return;
 
         this.container.innerHTML = '';
         this.container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
+        
+        const block = this.blocks[blockIndex];
+        if (!block) return; // Safety
 
         for (let i = 0; i < this.totalSteps; i++) {
             const el = document.createElement('div');
             el.className = 'step-box';
             
-            // Highlight if selected
-            if (i === this.selectedStep) {
-                el.classList.add('step-selected');
-            }
+            if (i === this.selectedStep) el.classList.add('step-selected');
 
-            // Draw content (Notes/Dots)
-            this.drawStepContent(el, i, activeView);
+            this.drawStepContent(el, i, activeView, block);
 
-            // Click Handler
             el.onclick = () => {
-                // Dispatch custom event for Main Controller
                 const event = new CustomEvent('stepSelect', { detail: { index: i } });
                 window.dispatchEvent(event);
             };
@@ -84,12 +102,9 @@ class TimeMatrix {
         }
     }
 
-    /**
-     * Helper to draw internal content of a step
-     */
-    drawStepContent(el, index, activeView) {
-        const bass = this.pattern.bass[index];
-        const drums = this.pattern.drums[index];
+    drawStepContent(el, index, activeView, block) {
+        const bass = block.bass[index];
+        const drums = block.drums[index];
 
         if (activeView === 'bass') {
             if (bass) {
@@ -108,11 +123,8 @@ class TimeMatrix {
             el.classList.remove('has-bass');
             if (drums && drums.length > 0) {
                 let html = '<div class="flex flex-wrap gap-1 justify-center items-center w-full px-1 pointer-events-none">';
-                // Access drumSynth kits safely if available, else use default colors
-                const kits = window.drumSynth ? window.drumSynth.kits : [
-                    {id:'kick', color:'red'}, {id:'snare', color:'yellow'}, {id:'hat', color:'cyan'}, {id:'perc', color:'purple'}
-                ];
-
+                const kits = window.drumSynth ? window.drumSynth.kits : [];
+                
                 kits.forEach(kit => {
                     if (drums.includes(kit.id)) {
                         html += `<div class="w-2 h-2 rounded-full shadow-[0_0_5px_${kit.color}]" style="background:${kit.color}"></div>`;
@@ -126,25 +138,16 @@ class TimeMatrix {
         }
     }
 
-    /**
-     * Visual feedback for the playback cursor.
-     * Called by the scheduler loop.
-     */
     highlightPlayingStep(index) {
         if (!this.container && !this.init()) return;
-
-        // 1. Remove old highlight
+        
         const old = this.container.querySelector('.step-playing');
         if (old) old.classList.remove('step-playing');
         
-        // 2. Add new highlight
-        // Ensure index is within bounds to prevent crash
         if (index >= 0 && index < this.container.children.length) {
-            const step = this.container.children[index];
-            if (step) step.classList.add('step-playing');
+            this.container.children[index].classList.add('step-playing');
         }
     }
 }
 
-// Initialize immediately so main.js can access window.timeMatrix
 window.timeMatrix = new TimeMatrix();
