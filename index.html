@@ -148,7 +148,8 @@
             <div id="instrument-tabs-container" class="flex flex-wrap gap-1"></div>
 
             <!-- MATRIX -->
-            <div id="matrix-container" class="grid gap-1.5 w-full select-none p-1 bg-black/30 rounded border border-gray-900/50 transition-all duration-200"></div>
+            <!-- FIX: Added mx-auto for centering -->
+            <div id="matrix-container" class="grid gap-1.5 w-full select-none p-1 bg-black/30 rounded border border-gray-900/50 transition-all duration-200 mx-auto"></div>
             
             <div class="h-10"></div> 
         </div>
@@ -205,10 +206,10 @@
     </div>
 
     <!-- MÓDULOS -->
-    <script src="Synth/effects/distortion.js"></script>
-    <script src="Synth/bass_synth.js"></script>
-    <script src="Synth/drum_synth.js"></script>
-    <script src="Synth/timematrix.js"></script>
+    <script src="fx_synth.js"></script>
+    <script src="bass_synth.js"></script>
+    <script src="drum_synth.js"></script>
+    <script src="timematrix.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
