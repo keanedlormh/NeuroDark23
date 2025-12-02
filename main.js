@@ -74,7 +74,7 @@ function initEngine() {
 
             if(!clockWorker) {
                 try {
-                    clockWorker = new Worker('Synth/clock_worker.js');
+                    clockWorker = new Worker('clock_worker.js');
                     clockWorker.onmessage = (e) => { if(e.data === "tick") scheduler(); };
                     clockWorker.postMessage({interval: INTERVAL});
                 } catch(e) { console.warn(e); }
@@ -105,9 +105,23 @@ function addBassSynth() {
 
 // --- GRID VIEW LOGIC ---
 function setGridLayout(mode) {
+    // FIX: Correctly clear active class
     document.querySelectorAll('.grid-view-btn').forEach(b => b.classList.remove('active'));
-    document.getElementById(`btn-view-${mode === 4 ? 'square' : mode === 8 ? 'horiz' : 'vert'}`).classList.add('active');
     
+    // FIX: Map string mode to button ID
+    const btnMap = {
+        'square': 'btn-view-square',
+        'horizontal': 'btn-view-horiz',
+        'vertical': 'btn-view-vert'
+    };
+    
+    const targetId = btnMap[mode];
+    if (targetId) {
+        const btn = document.getElementById(targetId);
+        if (btn) btn.classList.add('active');
+    }
+    
+    // Logic for columns
     let cols = 4;
     if(mode === 'square') cols = 4;
     else if(mode === 'horizontal') cols = 8;
