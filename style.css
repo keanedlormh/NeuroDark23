@@ -1,60 +1,89 @@
-/* NEURODARK NATIVE STYLES */
+/* NEURODARK 23 STYLES */
 :root {
     --neon-green: #00ff41;
+    --neon-purple: #bc13fe;
     --dark-bg: #050505;
 }
 
 body {
-    font-family: 'Courier New', Courier, monospace; /* Fuente segura del sistema */
+    font-family: 'Courier New', Courier, monospace; 
     background-color: var(--dark-bg);
     color: #ccc;
 }
 
-/* CUSTOM SCROLLBAR */
+/* SCROLLBAR */
 .custom-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
 .custom-scroll::-webkit-scrollbar-track { background: #000; }
-.custom-scroll::-webkit-scrollbar-thumb { background: #333; }
+.custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
 
 /* LOG */
-.log-info { color: #0f0; margin-bottom: 2px; }
-.log-err { color: #f55; margin-bottom: 2px; font-weight: bold; }
+.log-info { color: #0f0; margin-bottom: 2px; border-left: 2px solid #004400; padding-left: 4px; }
+.log-err { color: #f55; margin-bottom: 2px; font-weight: bold; border-left: 2px solid #500; padding-left: 4px; }
 
 /* TRACK BAR */
 .track-block {
-    min-width: 36px; height: 30px;
+    min-width: 40px; height: 36px;
     background: #111; border: 1px solid #333;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; cursor: pointer; color: #666;
+    font-size: 11px; cursor: pointer; color: #555;
+    border-radius: 4px;
 }
-.track-block-editing { border-color: var(--neon-green); color: var(--neon-green); background: #002200; }
-.track-block-playing { box-shadow: 0 0 8px #fff; border-color: #fff; z-index: 10; }
+.track-block-editing { border-color: var(--neon-green); color: var(--neon-green); background: #001a00; font-weight: bold; }
+.track-block-playing { box-shadow: 0 0 10px rgba(255,255,255,0.2); border-color: #fff; color: #fff; z-index: 10; }
 
-/* MATRIX STEPS */
+/* MATRIX STEPS (Mejorados) */
 .step-box {
     aspect-ratio: 1; background: #111; border: 1px solid #222;
+    border-radius: 4px;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; position: relative;
+    transition: all 0.1s;
 }
-.step-box:active { border-color: #fff; }
-.step-playing { background: #222; border-color: #fff; box-shadow: inset 0 0 10px rgba(255,255,255,0.2); }
+.step-box:active { transform: scale(0.95); }
+
+/* SELECCIÓN CLARA (Editando) */
+.step-selected { 
+    border: 2px solid #fff !important; 
+    background-color: rgba(255,255,255,0.05);
+    box-shadow: 0 0 15px rgba(255,255,255,0.15); 
+    z-index: 20;
+}
+
+/* REPRODUCIENDO (Cursor) */
+.step-playing { 
+    background-color: rgba(255, 255, 255, 0.15) !important; 
+    border-color: rgba(255,255,255,0.5) !important;
+}
+
+/* CONTENIDO */
 .has-bass { 
-    background: #0a2a0a; border-color: var(--neon-green); color: var(--neon-green); 
+    background: radial-gradient(circle, rgba(0,255,65,0.15) 0%, rgba(0,0,0,0) 80%); 
+    border-color: var(--neon-green); 
+    color: var(--neon-green); 
     box-shadow: 0 0 5px rgba(0,255,65,0.2);
 }
 
 /* PIANO */
-.piano-key { border-radius: 2px; font-size: 10px; font-weight: bold; }
-.white-key { background: #ccc; color: #000; height: 100%; }
-.black-key { background: #222; color: #777; border: 1px solid #444; height: 80%; margin-top: 2px; }
-.piano-key:active { background: var(--neon-green) !important; color: #000 !important; }
+.piano-key { border-radius: 3px; font-size: 10px; font-weight: bold; }
+.white-key { background: #ccc; color: #000; height: 100%; border-bottom: 3px solid #999; }
+.black-key { background: #222; color: #666; border: 1px solid #444; border-bottom: 3px solid #000; height: 85%; margin-top: 0; }
+.piano-key:active { background: var(--neon-green) !important; color: #000 !important; border-bottom-color: #004400; transform: translateY(2px); }
 
 /* PANEL MODES */
-.panel-docked { height: 220px; } 
-.panel-overlay { height: 350px; } /* Más alto si se quiere desacoplar después */
+.panel-docked { height: 240px; } 
+.panel-overlay { height: 380px; }
 
 /* SLIDER */
 input[type=range]::-webkit-slider-thumb { 
-    -webkit-appearance: none; height: 14px; width: 14px; 
+    -webkit-appearance: none; height: 16px; width: 16px; 
     background: var(--neon-green); border-radius: 50%; 
-    box-shadow: 0 0 5px var(--neon-green);
+    border: 2px solid #000;
+    box-shadow: 0 0 8px var(--neon-green);
+}
+
+/* GLITCH TEXT */
+.glitch-text {
+    position: relative;
+    color: #fff;
+    text-shadow: 2px 0 var(--neon-purple), -2px 0 var(--neon-green);
 }
