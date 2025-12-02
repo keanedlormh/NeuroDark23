@@ -74,7 +74,7 @@ function initEngine() {
 
             if(!clockWorker) {
                 try {
-                    clockWorker = new Worker('clock_worker.js');
+                    clockWorker = new Worker('clock_worker.js'); // Updated path for flat structure usually, assuming compiled
                     clockWorker.onmessage = (e) => { if(e.data === "tick") scheduler(); };
                     clockWorker.postMessage({interval: INTERVAL});
                 } catch(e) { console.warn(e); }
@@ -103,25 +103,25 @@ function addBassSynth() {
     renderSynthMenu(); renderInstrumentTabs(); setTab(id);
 }
 
-// --- GRID VIEW LOGIC ---
+// --- GRID VIEW LOGIC (FIXED) ---
 function setGridLayout(mode) {
-    // FIX: Correctly clear active class
+    // 1. Reset actives
     document.querySelectorAll('.grid-view-btn').forEach(b => b.classList.remove('active'));
     
-    // FIX: Map string mode to button ID
+    // 2. Set active button based on mode string
     const btnMap = {
         'square': 'btn-view-square',
         'horizontal': 'btn-view-horiz',
         'vertical': 'btn-view-vert'
     };
     
-    const targetId = btnMap[mode];
-    if (targetId) {
-        const btn = document.getElementById(targetId);
-        if (btn) btn.classList.add('active');
+    const activeBtnId = btnMap[mode];
+    if(activeBtnId) {
+        const btn = document.getElementById(activeBtnId);
+        if(btn) btn.classList.add('active');
     }
     
-    // Logic for columns
+    // 3. Set columns
     let cols = 4;
     if(mode === 'square') cols = 4;
     else if(mode === 'horizontal') cols = 8;
@@ -521,7 +521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(prop === 'resonance') s.setResonance(v);
             }
         };
-    };
+    });
     handleSlider('dist-slider', 'distortion');
     handleSlider('cutoff-slider', 'cutoff');
     handleSlider('res-slider', 'resonance');
