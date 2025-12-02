@@ -1,5 +1,5 @@
 /**
- * TIME MATRIX MODULE (Sequence Control)
+ * TIME MATRIX MODULE (Log Edition)
  */
 
 class TimeMatrix {
@@ -8,101 +8,77 @@ class TimeMatrix {
         this.gridCols = 4;
         this.blocks = [];
         this.containerId = 'matrix-container'; 
-        
         this.addBlock();
-        if(window.logToScreen) window.logToScreen("TimeMatrix Ready");
     }
 
-    // --- DATA ---
+    // ... (Métodos de datos iguales que v19) ...
+    init() { this.container = document.getElementById(this.containerId); return !!this.container; }
+    
+    registerTrack(id) { this.blocks.forEach(b=>{ if(!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null); }); }
+    removeTrack(id) { this.blocks.forEach(b=>delete b.tracks[id]); }
+    
     addBlock() {
-        const newTracks = { 'bass-1': new Array(this.totalSteps).fill(null) };
-        if (this.blocks.length > 0) {
-            Object.keys(this.blocks[0].tracks).forEach(k => {
-                newTracks[k] = new Array(this.totalSteps).fill(null);
-            });
-        }
-        this.blocks.push({
-            tracks: newTracks,
-            drums: new Array(this.totalSteps).fill().map(() => [])
-        });
+        const newTracks = {};
+        if (this.blocks.length > 0) Object.keys(this.blocks[0].tracks).forEach(k => newTracks[k] = new Array(this.totalSteps).fill(null));
+        else newTracks['bass-1'] = new Array(this.totalSteps).fill(null);
+        this.blocks.push({ tracks: newTracks, drums: new Array(this.totalSteps).fill().map(()=>[]) });
     }
-
+    
     duplicateBlock(idx) {
         if(!this.blocks[idx]) return;
         const org = this.blocks[idx];
         const newTracks = {};
-        Object.keys(org.tracks).forEach(k => {
-            // Deep copy of notes
-            newTracks[k] = org.tracks[k].map(n => n ? {...n} : null);
-        });
-        this.blocks.splice(idx+1, 0, { 
-            tracks: newTracks, 
-            drums: org.drums.map(d=>[...d]) 
-        });
+        Object.keys(org.tracks).forEach(k => newTracks[k] = [...org.tracks[k]]);
+        this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
     }
-
-    removeBlock(idx) {
-        if(this.blocks.length <= 1) return this.clearBlock(0);
-        this.blocks.splice(idx, 1);
+    
+    removeBlock(idx) { if(this.blocks.length<=1) this.clearBlock(0); else this.blocks.splice(idx,1); }
+    
+    moveBlock(idx, dir) {
+        const t = idx + dir;
+        if(t<0 || t>=this.blocks.length) return false;
+        const tmp = this.blocks[t]; this.blocks[t] = this.blocks[idx]; this.blocks[idx] = tmp;
+        return true;
     }
-
-    moveBlock(idx, direction) {
-        const targetIdx = idx + direction;
-        // Bounds check
-        if (targetIdx < 0 || targetIdx >= this.blocks.length) return false;
-        
-        // Swap
-        const temp = this.blocks[targetIdx];
-        this.blocks[targetIdx] = this.blocks[idx];
-        this.blocks[idx] = temp;
-        return true; // Success
-    }
-
+    
     clearBlock(idx) {
         const b = this.blocks[idx];
         if(!b) return;
-        Object.keys(b.tracks).forEach(k => b.tracks[k].fill(null));
-        b.drums.forEach(d => d.length = 0);
+        Object.keys(b.tracks).forEach(k=>b.tracks[k].fill(null));
+        b.drums.forEach(d=>d.length=0);
     }
-
-    registerTrack(id) {
-        this.blocks.forEach(b => { if (!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null); });
-    }
-    removeTrack(id) { this.blocks.forEach(b => delete b.tracks[id]); }
-
-    getStepData(step, blockIdx) {
-        const b = this.blocks[blockIdx];
+    
+    getStepData(step, block) {
+        const b = this.blocks[block];
         if(!b) return {};
-        return { tracks: b.tracks, drums: b.drums[step] || [] };
+        return { tracks: b.tracks, drums: b.drums[step]||[] };
     }
 
-    // --- RENDER ---
-    render(activeView, blockIdx) {
-        const container = document.getElementById(this.containerId);
-        if(!container) return;
+    render(activeView, blockIndex) {
+        if (!this.init()) return;
+        this.container.innerHTML = '';
+        this.container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
+        
+        const block = this.blocks[blockIndex];
+        if (!block) return;
 
-        container.innerHTML = '';
-        container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
-
-        const block = this.blocks[blockIdx];
-        if(!block) return;
-
-        for(let i=0; i<this.totalSteps; i++) {
+        for (let i = 0; i < this.totalSteps; i++) {
             const el = document.createElement('div');
             el.className = 'step-box';
             
-            if(activeView === 'drum') {
-                this.drawDrums(el, block.drums[i]);
+            if (activeView === 'drum') {
+                this.drawDrums(el, block.drums[i], i);
             } else {
                 if(!block.tracks[activeView]) this.registerTrack(activeView);
                 this.drawNote(el, block.tracks[activeView][i], i);
             }
 
             el.onclick = () => {
+                if(window.logToScreen) window.logToScreen(`Matrix Click: Step ${i+1}`);
                 const event = new CustomEvent('stepSelect', { detail: { index: i } });
                 window.dispatchEvent(event);
             };
-            container.appendChild(el);
+            this.container.appendChild(el);
         }
     }
 
@@ -116,28 +92,28 @@ class TimeMatrix {
         }
     }
 
-    drawDrums(el, drums) {
+    drawDrums(el, drums, i) {
         el.classList.remove('has-bass');
         if(drums && drums.length) {
             let html = '<div class="flex flex-wrap gap-1 justify-center px-1 pointer-events-none">';
-            const colors = {'kick':'#ff2222', 'snare':'#ffdd00', 'hat':'#00ccff', 'tom':'#bd00ff'};
+            const kits = (window.drumSynth && window.drumSynth.kits) ? window.drumSynth.kits : [];
             drums.forEach(id => {
-                const col = (window.drumSynth && window.drumSynth.kits.find(k=>k.id===id)?.color) || colors[id] || '#fff';
-                html += `<div class="w-2 h-2 rounded-full shadow-[0_0_5px_${col}]" style="background:${col}"></div>`;
+                const k = kits.find(x=>x.id===id);
+                const c = k ? k.color : '#fff';
+                html += `<div class="w-2 h-2 rounded-full shadow-[0_0_5px_${c}]" style="background:${c}"></div>`;
             });
             el.innerHTML = html + '</div>';
         } else {
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">.</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${i+1}</span>`;
         }
     }
 
     highlightPlayingStep(index) {
-        const container = document.getElementById(this.containerId);
-        if(!container) return;
-        const old = container.querySelector('.step-playing');
-        if(old) old.classList.remove('step-playing');
-        if(index >= 0 && container.children[index]) {
-            container.children[index].classList.add('step-playing');
+        if (!this.init()) return;
+        const old = this.container.querySelector('.step-playing');
+        if (old) old.classList.remove('step-playing');
+        if (index >= 0 && this.container.children[index]) {
+            this.container.children[index].classList.add('step-playing');
         }
     }
 }
