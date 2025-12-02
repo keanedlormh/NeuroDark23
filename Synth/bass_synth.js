@@ -1,5 +1,5 @@
 /*
- * BASS SYNTH MODULE (Class Export Fix)
+ * BASS SYNTH MODULE (Filter Edition)
  */
 
 class BassSynth {
@@ -8,9 +8,12 @@ class BassSynth {
         this.ctx = null;
         this.output = null;
         this.distortionEffect = null;
+        
+        // Params State
         this.params = {
             distortion: 20,
-            cutoffBase: 800
+            cutoff: 800, // Frecuencia base (Hz)
+            resonance: 4 // Factor Q
         };
     }
 
@@ -30,12 +33,22 @@ class BassSynth {
         }
     }
 
-    setDistortion(amount) {
-        this.params.distortion = amount;
-        if (this.distortionEffect) {
-            this.distortionEffect.setAmount(amount);
-        }
+    // --- PARAMETER SETTERS ---
+    
+    setDistortion(val) {
+        this.params.distortion = val;
+        if (this.distortionEffect) this.distortionEffect.setAmount(val);
     }
+
+    setCutoff(val) {
+        this.params.cutoff = val;
+    }
+
+    setResonance(val) {
+        this.params.resonance = val;
+    }
+
+    // --- PLAYBACK ---
 
     play(note, octave, time, duration = 0.3) {
         if (!this.ctx) return;
@@ -51,20 +64,32 @@ class BassSynth {
         const gain = this.ctx.createGain();
         const filter = this.ctx.createBiquadFilter();
 
+        // 1. Oscillator
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(freq, time);
         osc.detune.setValueAtTime((Math.random() * 10) - 5, time); 
 
+        // 2. Filter Dynamics
         filter.type = 'lowpass';
-        const cutoff = this.params.cutoffBase + (octave * 150);
-        filter.frequency.setValueAtTime(cutoff, time);
-        filter.Q.value = 4;
-        filter.frequency.exponentialRampToValueAtTime(80, time + duration);
+        
+        // Calculate cutoff based on note frequency + base cutoff
+        // This ensures the filter opens more for higher notes but respects user setting
+        const noteFactor = freq * 0.5; 
+        const base = this.params.cutoff + noteFactor;
+        
+        filter.frequency.setValueAtTime(base, time);
+        filter.Q.value = this.params.resonance;
+        
+        // Envelope: "Wobble" down
+        const decayTo = Math.max(50, base * 0.1);
+        filter.frequency.exponentialRampToValueAtTime(decayTo, time + duration);
 
+        // 3. Amp Envelope
         gain.gain.setValueAtTime(0, time);
         gain.gain.linearRampToValueAtTime(0.5, time + 0.02);
         gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
 
+        // 4. Routing
         osc.connect(filter);
         filter.connect(gain);
         
@@ -85,5 +110,4 @@ class BassSynth {
     }
 }
 
-// IMPORTANT: Global Export
 window.BassSynth = BassSynth;
