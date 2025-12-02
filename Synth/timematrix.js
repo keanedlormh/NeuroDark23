@@ -1,30 +1,29 @@
 /**
- * TIME MATRIX MODULE (v23 Grid Control)
+ * TIME MATRIX MODULE (Log Edition)
  */
 
 class TimeMatrix {
     constructor(steps = 16) {
         this.totalSteps = steps;
-        this.gridCols = 4; // Default
+        this.gridCols = 4;
         this.blocks = [];
         this.containerId = 'matrix-container'; 
         this.addBlock();
     }
 
-    // --- VIEW CONTROL ---
-    setGridColumns(cols) {
-        this.gridCols = parseInt(cols);
-        // Force re-render of current view
-        // Note: The render method is called by main.js, this just updates state
-    }
-
-    // --- DATA ---
+    // ... (Métodos de datos iguales que v19) ...
+    init() { this.container = document.getElementById(this.containerId); return !!this.container; }
+    
+    registerTrack(id) { this.blocks.forEach(b=>{ if(!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null); }); }
+    removeTrack(id) { this.blocks.forEach(b=>delete b.tracks[id]); }
+    
     addBlock() {
-        const newTracks = { 'bass-1': new Array(this.totalSteps).fill(null) };
+        const newTracks = {};
         if (this.blocks.length > 0) Object.keys(this.blocks[0].tracks).forEach(k => newTracks[k] = new Array(this.totalSteps).fill(null));
+        else newTracks['bass-1'] = new Array(this.totalSteps).fill(null);
         this.blocks.push({ tracks: newTracks, drums: new Array(this.totalSteps).fill().map(()=>[]) });
     }
-
+    
     duplicateBlock(idx) {
         if(!this.blocks[idx]) return;
         const org = this.blocks[idx];
@@ -32,31 +31,28 @@ class TimeMatrix {
         Object.keys(org.tracks).forEach(k => newTracks[k] = [...org.tracks[k]]);
         this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
     }
-
+    
     removeBlock(idx) { if(this.blocks.length<=1) this.clearBlock(0); else this.blocks.splice(idx,1); }
+    
     moveBlock(idx, dir) {
         const t = idx + dir;
         if(t<0 || t>=this.blocks.length) return false;
         const tmp = this.blocks[t]; this.blocks[t] = this.blocks[idx]; this.blocks[idx] = tmp;
         return true;
     }
+    
     clearBlock(idx) {
         const b = this.blocks[idx];
         if(!b) return;
         Object.keys(b.tracks).forEach(k=>b.tracks[k].fill(null));
         b.drums.forEach(d=>d.length=0);
     }
-    registerTrack(id) { this.blocks.forEach(b=>{ if(!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null); }); }
-    removeTrack(id) { this.blocks.forEach(b=>delete b.tracks[id]); }
     
     getStepData(step, block) {
         const b = this.blocks[block];
         if(!b) return {};
         return { tracks: b.tracks, drums: b.drums[step]||[] };
     }
-
-    // --- RENDER ---
-    init() { this.container = document.getElementById(this.containerId); return !!this.container; }
 
     render(activeView, blockIndex) {
         if (!this.init()) return;
@@ -70,13 +66,15 @@ class TimeMatrix {
             const el = document.createElement('div');
             el.className = 'step-box';
             
-            if (activeView === 'drum') this.drawDrums(el, block.drums[i]);
-            else {
+            if (activeView === 'drum') {
+                this.drawDrums(el, block.drums[i], i);
+            } else {
                 if(!block.tracks[activeView]) this.registerTrack(activeView);
                 this.drawNote(el, block.tracks[activeView][i], i);
             }
 
             el.onclick = () => {
+                if(window.logToScreen) window.logToScreen(`Matrix Click: Step ${i+1}`);
                 const event = new CustomEvent('stepSelect', { detail: { index: i } });
                 window.dispatchEvent(event);
             };
@@ -94,7 +92,7 @@ class TimeMatrix {
         }
     }
 
-    drawDrums(el, drums) {
+    drawDrums(el, drums, i) {
         el.classList.remove('has-bass');
         if(drums && drums.length) {
             let html = '<div class="flex flex-wrap gap-1 justify-center px-1 pointer-events-none">';
@@ -106,7 +104,7 @@ class TimeMatrix {
             });
             el.innerHTML = html + '</div>';
         } else {
-            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">.</span>`;
+            el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${i+1}</span>`;
         }
     }
 
