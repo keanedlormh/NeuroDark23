@@ -1,113 +1,56 @@
 /*
- * BASS SYNTH MODULE (Filter Edition)
+ * BASS FX CHAIN MODULE
+ * Handles post-processing effects like Distortion.
  */
 
-class BassSynth {
-    constructor(id = 'bass-1') {
-        this.id = id;
-        this.ctx = null;
-        this.output = null;
-        this.distortionEffect = null;
-        
-        // Params State
-        this.params = {
-            distortion: 20,
-            cutoff: 800, // Frecuencia base (Hz)
-            resonance: 4 // Factor Q
-        };
-    }
-
-    init(audioContext, destinationNode) {
+class BassFXChain {
+    constructor(audioContext) {
         this.ctx = audioContext;
+        this.input = this.ctx.createGain();
         this.output = this.ctx.createGain();
-        this.output.connect(destinationNode);
-
-        try {
-            if (typeof DistortionEffect !== 'undefined') {
-                this.distortionEffect = new DistortionEffect(this.ctx);
-                this.distortionEffect.setAmount(this.params.distortion);
-                this.distortionEffect.connect(this.output);
-            }
-        } catch (e) {
-            console.warn("FX Load Fail", e);
-        }
+        
+        // 1. Distortion Node
+        this.shaper = this.ctx.createWaveShaper();
+        this.shaper.oversample = '2x';
+        
+        // Routing: Input -> Shaper -> Output
+        this.input.connect(this.shaper);
+        this.shaper.connect(this.output);
+        
+        // Init Cache
+        this.amount = 0;
+        this.cachedCurve = null;
     }
 
-    // --- PARAMETER SETTERS ---
-    
-    setDistortion(val) {
-        this.params.distortion = val;
-        if (this.distortionEffect) this.distortionEffect.setAmount(val);
+    connect(destination) {
+        this.output.connect(destination);
     }
 
-    setCutoff(val) {
-        this.params.cutoff = val;
-    }
-
-    setResonance(val) {
-        this.params.resonance = val;
-    }
-
-    // --- PLAYBACK ---
-
-    play(note, octave, time, duration = 0.3) {
-        if (!this.ctx) return;
-
-        const noteMap = {'C':0,'C#':1,'D':2,'D#':3,'E':4,'F':5,'F#':6,'G':7,'G#':8,'A':9,'A#':10,'B':11};
-        const noteIndex = noteMap[note];
-        if (noteIndex === undefined) return;
-
-        const midiNote = (octave + 1) * 12 + noteIndex;
-        const freq = 440 * Math.pow(2, (midiNote - 69) / 12);
-
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        const filter = this.ctx.createBiquadFilter();
-
-        // 1. Oscillator
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(freq, time);
-        osc.detune.setValueAtTime((Math.random() * 10) - 5, time); 
-
-        // 2. Filter Dynamics
-        filter.type = 'lowpass';
+    setDistortion(amount) {
+        if (amount === this.amount && this.cachedCurve) return;
+        this.amount = amount;
         
-        // Calculate cutoff based on note frequency + base cutoff
-        // This ensures the filter opens more for higher notes but respects user setting
-        const noteFactor = freq * 0.5; 
-        const base = this.params.cutoff + noteFactor;
-        
-        filter.frequency.setValueAtTime(base, time);
-        filter.Q.value = this.params.resonance;
-        
-        // Envelope: "Wobble" down
-        const decayTo = Math.max(50, base * 0.1);
-        filter.frequency.exponentialRampToValueAtTime(decayTo, time + duration);
-
-        // 3. Amp Envelope
-        gain.gain.setValueAtTime(0, time);
-        gain.gain.linearRampToValueAtTime(0.5, time + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, time + duration);
-
-        // 4. Routing
-        osc.connect(filter);
-        filter.connect(gain);
-        
-        if (this.distortionEffect) {
-            gain.connect(this.distortionEffect.input);
+        if (amount <= 0) {
+            this.shaper.curve = null;
         } else {
-            gain.connect(this.output);
+            // Lazy generate curve
+            this.shaper.curve = this._makeDistortionCurve(amount);
         }
+    }
 
-        osc.start(time);
-        osc.stop(time + duration + 0.05);
-
-        osc.onended = () => {
-            osc.disconnect();
-            gain.disconnect();
-            filter.disconnect();
-        };
+    _makeDistortionCurve(amount) {
+        const k = amount;
+        const n_samples = 44100;
+        const curve = new Float32Array(n_samples);
+        const deg = Math.PI / 180;
+        
+        for (let i = 0; i < n_samples; ++i) {
+            let x = i * 2 / n_samples - 1;
+            curve[i] = (3 + k) * x * 20 * deg / (Math.PI + k * Math.abs(x));
+        }
+        return curve;
     }
 }
 
-window.BassSynth = BassSynth;
+// Export class globally
+window.BassFXChain = BassFXChain;
