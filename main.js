@@ -1,5 +1,5 @@
 /*
- * NEURODARK 23 - NATIVE CORE v22 (Filters)
+ * NEURODARK 23 - MAIN CONTROLLER v23
  */
 
 const AppState = {
@@ -12,7 +12,7 @@ const AppState = {
     activeView: 'bass-1',
     currentOctave: 3,
     distortionLevel: 20,
-    panelMode: 'docked',
+    gridSizePercent: 100,
     exportReps: 1
 };
 
@@ -32,12 +32,11 @@ let lastDrawnStep = -1;
 function safeClick(id, fn) {
     const el = document.getElementById(id);
     if(el) el.onclick = fn;
-    else console.warn(`Button ID not found: ${id}`);
 }
 
-// --- BOOTSTRAP ---
+// --- BOOT ---
 function bootstrap() {
-    window.logToScreen("Boot Filters...");
+    window.logToScreen("Booting v23...");
     try {
         if(!window.timeMatrix) throw "TimeMatrix Missing";
         if(typeof window.BassSynth === 'undefined') throw "BassSynth Missing";
@@ -53,12 +52,10 @@ function bootstrap() {
         updateEditors();
         initPlayClock();
         
-    } catch(e) {
-        window.logToScreen("BOOT ERR: " + e, 'error');
-    }
+    } catch(e) { window.logToScreen("ERR: "+e, 'error'); }
 }
 
-// --- ENGINE ---
+// --- AUDIO ---
 function initEngine() {
     if(audioCtx && audioCtx.state === 'running') return;
     try {
@@ -67,7 +64,6 @@ function initEngine() {
             audioCtx = new AC({ latencyHint: 'interactive' });
             masterGain = audioCtx.createGain();
             masterGain.gain.value = 0.6;
-            
             const comp = audioCtx.createDynamicsCompressor();
             comp.threshold.value = -3;
             masterGain.connect(comp);
@@ -105,13 +101,32 @@ function addBassSynth() {
     bassSynths.push(s);
     window.timeMatrix.registerTrack(id);
     renderSynthMenu(); renderInstrumentTabs(); setTab(id);
-    window.logToScreen(`+Synth: ${id}`);
+}
+
+// --- GRID VIEW LOGIC ---
+function setGridLayout(mode) {
+    document.querySelectorAll('.grid-view-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`btn-view-${mode === 4 ? 'square' : mode === 8 ? 'horiz' : 'vert'}`).classList.add('active');
+    
+    let cols = 4;
+    if(mode === 'square') cols = 4;
+    else if(mode === 'horizontal') cols = 8;
+    else if(mode === 'vertical') cols = 2;
+    
+    window.timeMatrix.setGridColumns(cols);
+    updateEditors();
+}
+
+function updateGridSize() {
+    const container = document.getElementById('matrix-container');
+    if(container) {
+        container.style.width = `${AppState.gridSizePercent}%`;
+    }
 }
 
 // --- EXPORT ---
 async function renderAudio() {
     if(AppState.isPlaying) toggleTransport();
-    window.logToScreen("Rendering WAV...");
     const btn = document.getElementById('btn-start-render');
     if(btn) { btn.innerText = "WAIT..."; btn.disabled = true; }
 
@@ -124,7 +139,6 @@ async function renderAudio() {
 
         const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
         const offCtx = new OfflineCtx(2, 44100 * duration, 44100);
-        
         const offMaster = offCtx.createGain();
         offMaster.gain.value = 0.6;
         offMaster.connect(offCtx.destination);
@@ -133,7 +147,6 @@ async function renderAudio() {
         bassSynths.forEach(ls => {
             const s = new window.BassSynth(ls.id);
             s.init(offCtx, offMaster);
-            // Copy Params
             s.setDistortion(ls.params.distortion);
             s.setCutoff(ls.params.cutoff);
             s.setResonance(ls.params.resonance);
@@ -165,9 +178,8 @@ async function renderAudio() {
         const url = URL.createObjectURL(wav);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `ND23_Render_${Date.now()}.wav`;
+        a.download = `ND23_Render.wav`;
         a.click();
-        window.logToScreen("Download Ready!");
         toggleExportModal();
 
     } catch(e) { window.logToScreen("Render Err: "+e, 'error'); }
@@ -175,36 +187,16 @@ async function renderAudio() {
 }
 
 function bufferToWave(abuffer, len) {
-    let numOfChan = abuffer.numberOfChannels,
-        length = len * numOfChan * 2 + 44,
-        buffer = new ArrayBuffer(length),
-        view = new DataView(buffer),
-        channels = [], i, sample,
-        offset = 0, pos = 0;
-
+    let numOfChan = abuffer.numberOfChannels, length = len * numOfChan * 2 + 44, buffer = new ArrayBuffer(length), view = new DataView(buffer), channels = [], i, sample, offset = 0, pos = 0;
     function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
     function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-
-    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
-    setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-    setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
-    setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
-    setUint32(length - pos - 4);
-
+    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(length - pos - 4);
     for(i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
-
-    while(pos < length) {
-        for(i = 0; i < numOfChan; i++) {
-            sample = Math.max(-1, Math.min(1, channels[i][offset])); 
-            sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; 
-            view.setInt16(pos, sample, true); pos += 2;
-        }
-        offset++;
-    }
+    while(pos < length) { for(i = 0; i < numOfChan; i++) { sample = Math.max(-1, Math.min(1, channels[i][offset])); sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; view.setInt16(pos, sample, true); pos += 2; } offset++; }
     return new Blob([buffer], {type: "audio/wav"});
 }
 
-// --- CLOCK ---
+// --- CLOCK & SCHEDULER (Same as v22) ---
 function initPlayClock() {
     const svg = document.getElementById('play-clock-svg');
     if(!svg) return;
@@ -234,10 +226,8 @@ function updatePlayClock(step) {
     }
 }
 
-// --- SCHEDULER ---
 function nextNote() {
-    const secPerBeat = 60.0 / AppState.bpm;
-    const secPerStep = secPerBeat / 4;
+    const secPerStep = (60.0 / AppState.bpm) / 4;
     nextNoteTime += secPerStep;
     AppState.currentPlayStep++;
     if(AppState.currentPlayStep >= window.timeMatrix.totalSteps) {
@@ -322,13 +312,10 @@ function setTab(v) {
     updateEditors();
     const s = bassSynths.find(sy=>sy.id===v);
     if(s) {
-        const slDist = document.getElementById('dist-slider');
-        const slCut = document.getElementById('cutoff-slider');
-        const slRes = document.getElementById('res-slider');
-        
-        if(slDist) slDist.value = s.params.distortion;
-        if(slCut) slCut.value = s.params.cutoff;
-        if(slRes) slRes.value = s.params.resonance;
+        const setV = (id, val) => { const el = document.getElementById(id); if(el) el.value = val; };
+        setV('dist-slider', s.params.distortion);
+        setV('cutoff-slider', s.params.cutoff);
+        setV('res-slider', s.params.resonance);
     }
 }
 
@@ -382,7 +369,7 @@ function renderSynthMenu() {
     c.innerHTML = '';
     bassSynths.forEach(s => {
         const r = document.createElement('div');
-        r.className = 'flex justify-between bg-black p-2 border border-gray-800 text-xs';
+        r.className = 'flex justify-between bg-black p-2 border border-gray-800 text-xs mb-1';
         r.innerHTML = `<span class="text-green-500">${s.id}</span><button class="text-red-500" onclick="removeBassSynth('${s.id}')">X</button>`;
         c.appendChild(r);
     });
@@ -393,39 +380,34 @@ function toggleTransport() {
     AppState.isPlaying = !AppState.isPlaying;
     const btn = document.getElementById('btn-play');
     if(AppState.isPlaying) {
-        btn.innerHTML = "&#10074;&#10074;";
         btn.classList.add('border-green-500', 'text-green-500');
+        btn.innerHTML = "&#10074;&#10074;";
         AppState.currentPlayStep = 0; AppState.currentPlayBlock = AppState.editingBlock;
         nextNoteTime = audioCtx.currentTime + 0.1; visualQueue = [];
         if(clockWorker) clockWorker.postMessage("start");
         drawLoop();
-        window.logToScreen("PLAY");
     } else {
-        btn.innerHTML = "&#9658;";
         btn.classList.remove('border-green-500', 'text-green-500');
+        btn.innerHTML = "&#9658;";
         if(clockWorker) clockWorker.postMessage("stop");
         cancelAnimationFrame(drawFrameId); window.timeMatrix.highlightPlayingStep(-1); updatePlayClock(-1);
-        renderTrackBar(); window.logToScreen("STOP");
+        renderTrackBar();
     }
 }
 
-// --- MODALS ---
 function toggleMenu() { const m=document.getElementById('main-menu'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
 function toggleExportModal() { const m=document.getElementById('export-modal'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
 
 // --- SETUP ---
 document.addEventListener('DOMContentLoaded', () => {
     bootstrap();
-    
     document.addEventListener('click', globalUnlock);
     document.addEventListener('touchstart', globalUnlock);
     
     safeClick('btn-play', toggleTransport);
-    
     safeClick('btn-open-menu', () => { renderSynthMenu(); toggleMenu(); });
     safeClick('btn-menu-close', toggleMenu);
     
-    // Log
     const logPanel = document.getElementById('sys-log-panel');
     const logBtn = document.getElementById('btn-toggle-log-internal');
     const toggleLog = () => {
@@ -435,19 +417,24 @@ document.addEventListener('DOMContentLoaded', () => {
     if(logBtn) logBtn.onclick = toggleLog;
     safeClick('btn-toggle-log-menu', () => { toggleLog(); toggleMenu(); });
 
-    // Synth Actions
     safeClick('btn-add-synth', addBassSynth);
     safeClick('btn-menu-panic', () => location.reload());
     safeClick('btn-menu-clear', () => { if(confirm("Clear?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); toggleMenu(); }});
     
-    // Track Actions
     safeClick('btn-add-block', () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length-1; updateEditors(); renderTrackBar(); });
     safeClick('btn-del-block', () => { if(confirm("Del?")) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length-1); updateEditors(); renderTrackBar(); }});
     safeClick('btn-copy-block', () => { window.timeMatrix.duplicateBlock(AppState.editingBlock); AppState.editingBlock++; updateEditors(); renderTrackBar(); });
     safeClick('btn-move-left', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, -1)) { AppState.editingBlock--; updateEditors(); renderTrackBar(); }});
     safeClick('btn-move-right', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, 1)) { AppState.editingBlock++; updateEditors(); renderTrackBar(); }});
 
-    // Export
+    // NEW GRID VIEW LOGIC
+    safeClick('btn-view-square', () => setGridLayout('square'));
+    safeClick('btn-view-horiz', () => setGridLayout('horizontal'));
+    safeClick('btn-view-vert', () => setGridLayout('vertical'));
+    
+    safeClick('btn-size-minus', () => { if(AppState.gridSizePercent > 60) AppState.gridSizePercent -= 10; updateGridSize(); });
+    safeClick('btn-size-plus', () => { if(AppState.gridSizePercent < 150) AppState.gridSizePercent += 10; updateGridSize(); });
+
     safeClick('btn-open-export', () => { toggleMenu(); toggleExportModal(); });
     safeClick('btn-close-export', toggleExportModal);
     safeClick('btn-start-render', renderAudio);
@@ -469,13 +456,20 @@ document.addEventListener('DOMContentLoaded', () => {
         else { document.body.appendChild(p); btn.innerHTML = "_"; }
     });
     
-    // Matrix Tap
     window.addEventListener('stepSelect', (e) => {
         AppState.selectedStep = e.detail.index;
         updateEditors();
+        // Visual select highlight for step
+        const s = bassSynths.find(sy => sy.id === AppState.activeView);
+        if(s && audioCtx) {
+            const tracks = window.timeMatrix.blocks[AppState.editingBlock].tracks;
+            if(tracks[s.id] && tracks[s.id][AppState.selectedStep]) {
+                const n = tracks[s.id][AppState.selectedStep];
+                s.play(n.note, n.octave, audioCtx.currentTime);
+            }
+        }
     });
     
-    // Piano
     document.querySelectorAll('.piano-key').forEach(k => {
         k.onclick = () => {
             initEngine();
@@ -502,7 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
     safeClick('oct-up', () => { if(AppState.currentOctave<6) AppState.currentOctave++; octD.innerText=AppState.currentOctave; });
     safeClick('oct-down', () => { if(AppState.currentOctave>1) AppState.currentOctave--; octD.innerText=AppState.currentOctave; });
     
-    // NEW SLIDERS LOGIC
     const handleSlider = (id, prop) => {
         const el = document.getElementById(id);
         if(el) el.oninput = (e) => {
