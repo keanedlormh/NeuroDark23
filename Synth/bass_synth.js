@@ -1,5 +1,5 @@
 /*
- * BASS SYNTH MODULE (Modular Class)
+ * BASS SYNTH MODULE (Class Export Fix)
  */
 
 class BassSynth {
@@ -16,22 +16,17 @@ class BassSynth {
 
     init(audioContext, destinationNode) {
         this.ctx = audioContext;
-        
-        // Output Node
         this.output = this.ctx.createGain();
         this.output.connect(destinationNode);
 
-        // Load Effects Safely
         try {
             if (typeof DistortionEffect !== 'undefined') {
                 this.distortionEffect = new DistortionEffect(this.ctx);
                 this.distortionEffect.setAmount(this.params.distortion);
                 this.distortionEffect.connect(this.output);
-            } else {
-                // Silent fallback
             }
         } catch (e) {
-            console.warn("Effect loading skipped", e);
+            console.warn("FX Load Fail", e);
         }
     }
 
@@ -73,7 +68,6 @@ class BassSynth {
         osc.connect(filter);
         filter.connect(gain);
         
-        // Route
         if (this.distortionEffect) {
             gain.connect(this.distortionEffect.input);
         } else {
@@ -91,5 +85,5 @@ class BassSynth {
     }
 }
 
-// EXPLICIT EXPORT FOR MAIN.JS CHECKS
+// IMPORTANT: Global Export
 window.BassSynth = BassSynth;
