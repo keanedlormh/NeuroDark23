@@ -1,4 +1,4 @@
-/* NEURODARK 23 STYLES */
+/* NEURODARK 23 - NATIVE STYLES */
 :root {
     --neon-green: #00ff41;
     --neon-purple: #bc13fe;
@@ -9,6 +9,7 @@ body {
     font-family: 'Courier New', Courier, monospace; 
     background-color: var(--dark-bg);
     color: #ccc;
+    user-select: none;
 }
 
 /* SCROLLBAR */
@@ -45,39 +46,20 @@ body {
 .track-block-editing { border-color: var(--neon-green); color: var(--neon-green); background: #001a00; font-weight: bold; }
 .track-block-playing { box-shadow: 0 0 10px rgba(255,255,255,0.2); border-color: #fff; color: #fff; z-index: 10; }
 
-/* EXPORT MODAL BUTTONS */
-.export-rep-btn {
-    padding: 10px;
-    background: #111;
-    border: 1px solid #444;
-    color: #666;
-    font-size: 12px;
-    font-weight: bold;
-}
-.export-rep-btn.active {
-    border-color: var(--neon-green);
-    color: var(--neon-green);
-    background: #002200;
-    box-shadow: 0 0 10px rgba(0,255,65,0.2);
-}
+/* EXPORT MODAL */
+.export-rep-btn { padding: 10px; background: #111; border: 1px solid #444; color: #666; font-size: 12px; font-weight: bold; }
+.export-rep-btn.active { border-color: var(--neon-green); color: var(--neon-green); background: #002200; box-shadow: 0 0 10px rgba(0,255,65,0.2); }
 
-/* MATRIX & GENERAL */
+/* MATRIX STEPS */
 .step-box {
     aspect-ratio: 1; background: #111; border: 1px solid #222;
     border-radius: 4px; display: flex; align-items: center; justify-content: center;
     cursor: pointer; position: relative; transition: all 0.1s;
 }
 .step-box:active { transform: scale(0.95); }
-.step-selected { 
-    border: 2px solid #fff !important; background-color: rgba(255,255,255,0.05);
-    box-shadow: 0 0 15px rgba(255,255,255,0.15); z-index: 20;
-}
+.step-selected { border: 2px solid #fff !important; background-color: rgba(255,255,255,0.05); box-shadow: 0 0 15px rgba(255,255,255,0.15); z-index: 20; }
 .step-playing { background-color: rgba(255, 255, 255, 0.15) !important; border-color: rgba(255,255,255,0.5) !important; }
-.has-bass { 
-    background: radial-gradient(circle, rgba(0,255,65,0.15) 0%, rgba(0,0,0,0) 80%); 
-    border-color: var(--neon-green); color: var(--neon-green); 
-    box-shadow: 0 0 5px rgba(0,255,65,0.2);
-}
+.has-bass { background: radial-gradient(circle, rgba(0,255,65,0.15) 0%, rgba(0,0,0,0) 80%); border-color: var(--neon-green); color: var(--neon-green); box-shadow: 0 0 5px rgba(0,255,65,0.2); }
 
 .piano-key { border-radius: 3px; font-size: 10px; font-weight: bold; }
 .white-key { background: #ccc; color: #000; height: 100%; border-bottom: 3px solid #999; }
@@ -87,10 +69,5 @@ body {
 .panel-docked { height: 240px; } 
 .panel-overlay { height: 380px; }
 
-input[type=range]::-webkit-slider-thumb { 
-    -webkit-appearance: none; height: 16px; width: 16px; 
-    background: var(--neon-green); border-radius: 50%; 
-    border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green);
-}
-
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; background: var(--neon-green); border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green); }
 .glitch-text { position: relative; color: #fff; text-shadow: 2px 0 var(--neon-purple), -2px 0 var(--neon-green); }
