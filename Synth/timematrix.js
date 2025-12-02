@@ -1,5 +1,5 @@
 /**
- * TIME MATRIX MODULE (v15 Debug)
+ * TIME MATRIX MODULE (Sequence Control)
  */
 
 class TimeMatrix {
@@ -9,34 +9,53 @@ class TimeMatrix {
         this.blocks = [];
         this.containerId = 'matrix-container'; 
         
-        // Init logic
         this.addBlock();
-        if(window.logToScreen) window.logToScreen("TimeMatrix Initialized");
+        if(window.logToScreen) window.logToScreen("TimeMatrix Ready");
     }
 
+    // --- DATA ---
     addBlock() {
         const newTracks = { 'bass-1': new Array(this.totalSteps).fill(null) };
-        // Copy existing track keys if any
         if (this.blocks.length > 0) {
             Object.keys(this.blocks[0].tracks).forEach(k => {
                 newTracks[k] = new Array(this.totalSteps).fill(null);
             });
         }
-
         this.blocks.push({
             tracks: newTracks,
             drums: new Array(this.totalSteps).fill().map(() => [])
         });
     }
 
-    registerTrack(id) {
-        this.blocks.forEach(b => {
-            if (!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null);
+    duplicateBlock(idx) {
+        if(!this.blocks[idx]) return;
+        const org = this.blocks[idx];
+        const newTracks = {};
+        Object.keys(org.tracks).forEach(k => {
+            // Deep copy of notes
+            newTracks[k] = org.tracks[k].map(n => n ? {...n} : null);
+        });
+        this.blocks.splice(idx+1, 0, { 
+            tracks: newTracks, 
+            drums: org.drums.map(d=>[...d]) 
         });
     }
 
-    removeTrack(id) {
-        this.blocks.forEach(b => delete b.tracks[id]);
+    removeBlock(idx) {
+        if(this.blocks.length <= 1) return this.clearBlock(0);
+        this.blocks.splice(idx, 1);
+    }
+
+    moveBlock(idx, direction) {
+        const targetIdx = idx + direction;
+        // Bounds check
+        if (targetIdx < 0 || targetIdx >= this.blocks.length) return false;
+        
+        // Swap
+        const temp = this.blocks[targetIdx];
+        this.blocks[targetIdx] = this.blocks[idx];
+        this.blocks[idx] = temp;
+        return true; // Success
     }
 
     clearBlock(idx) {
@@ -46,42 +65,27 @@ class TimeMatrix {
         b.drums.forEach(d => d.length = 0);
     }
 
-    duplicateBlock(idx) {
-        if(!this.blocks[idx]) return;
-        const org = this.blocks[idx];
-        const newTracks = {};
-        Object.keys(org.tracks).forEach(k => newTracks[k] = [...org.tracks[k]]);
-        this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
+    registerTrack(id) {
+        this.blocks.forEach(b => { if (!b.tracks[id]) b.tracks[id] = new Array(this.totalSteps).fill(null); });
     }
+    removeTrack(id) { this.blocks.forEach(b => delete b.tracks[id]); }
 
-    removeBlock(idx) {
-        if(this.blocks.length <= 1) return this.clearBlock(0);
-        this.blocks.splice(idx, 1);
-    }
-
-    // -- DATA --
     getStepData(step, blockIdx) {
         const b = this.blocks[blockIdx];
         if(!b) return {};
         return { tracks: b.tracks, drums: b.drums[step] || [] };
     }
 
-    // -- RENDER --
+    // --- RENDER ---
     render(activeView, blockIdx) {
         const container = document.getElementById(this.containerId);
-        if(!container) {
-            if(window.logToScreen) window.logToScreen("Matrix Container Missing!", "error");
-            return;
-        }
+        if(!container) return;
 
         container.innerHTML = '';
         container.style.gridTemplateColumns = `repeat(${this.gridCols}, minmax(0, 1fr))`;
 
         const block = this.blocks[blockIdx];
-        if(!block) {
-            if(window.logToScreen) window.logToScreen(`Block ${blockIdx} missing!`, "error");
-            return;
-        }
+        if(!block) return;
 
         for(let i=0; i<this.totalSteps; i++) {
             const el = document.createElement('div');
@@ -90,7 +94,6 @@ class TimeMatrix {
             if(activeView === 'drum') {
                 this.drawDrums(el, block.drums[i]);
             } else {
-                // Check if track exists, create if not
                 if(!block.tracks[activeView]) this.registerTrack(activeView);
                 this.drawNote(el, block.tracks[activeView][i], i);
             }
@@ -117,7 +120,6 @@ class TimeMatrix {
         el.classList.remove('has-bass');
         if(drums && drums.length) {
             let html = '<div class="flex flex-wrap gap-1 justify-center px-1 pointer-events-none">';
-            // Fallback colors if drumSynth not ready
             const colors = {'kick':'#ff2222', 'snare':'#ffdd00', 'hat':'#00ccff', 'tom':'#bd00ff'};
             drums.forEach(id => {
                 const col = (window.drumSynth && window.drumSynth.kits.find(k=>k.id===id)?.color) || colors[id] || '#fff';
