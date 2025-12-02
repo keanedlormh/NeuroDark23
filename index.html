@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeuroDark23 | v20 Debug</title>
+    <title>NeuroDark23 | Native Core</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="style.css">
     
-    <!-- LOGGER DEL SISTEMA -->
+    <!-- LOGGER INTEGRADO -->
     <script>
         window.logToScreen = function(msg, type='info') {
             const consoleEl = document.getElementById('sys-log-content');
             if(consoleEl) {
                 const line = document.createElement('div');
-                line.className = type === 'error' ? 'text-red-400 font-bold' : 'text-green-400';
+                line.className = type === 'error' ? 'log-err' : 'log-info';
                 const time = new Date().toLocaleTimeString().split(' ')[0];
                 line.innerText = `[${time}] ${msg}`;
                 consoleEl.appendChild(line);
@@ -23,33 +22,63 @@
             console.log(`[ND23] ${msg}`);
         }
         window.onerror = function(msg, url, line) {
-            window.logToScreen(`CRASH: ${msg} (L${line})`, 'error');
+            // Retrasar para asegurar que el DOM existe
+            setTimeout(() => window.logToScreen(`CRASH: ${msg} (L${line})`, 'error'), 500);
         }
     </script>
 </head>
-<body class="bg-black text-gray-300 font-mono overflow-hidden fixed inset-0">
+<body class="bg-black text-gray-300 font-mono overflow-hidden fixed inset-0 select-none">
 
-    <!-- PANEL DE LOGS (Abierto por defecto) -->
-    <div id="sys-log-panel" class="fixed top-0 left-0 w-full h-40 bg-black/95 border-b-2 border-green-600 z-[200] flex flex-col font-mono text-[10px] shadow-2xl transition-transform duration-300">
-        <div class="bg-green-900/30 px-2 py-1 flex justify-between items-center border-b border-green-800">
-            <span class="text-green-400 font-bold tracking-widest flex items-center gap-2">
-                <i data-lucide="terminal" class="w-3 h-3"></i> SYSTEM DIAGNOSTICS
-            </span>
-            <button id="btn-toggle-log-internal" class="text-white hover:text-green-300 bg-green-900/50 px-2 rounded">[ HIDE LOG ]</button>
+    <!-- PANEL DE LOGS -->
+    <div id="sys-log-panel" class="fixed top-0 left-0 w-full h-32 bg-black/95 border-b border-green-900 z-[200] transition-transform duration-300 flex flex-col font-mono text-[10px] transform -translate-y-full">
+        <div class="bg-green-900/20 px-2 py-1 flex justify-between items-center border-b border-green-900/50">
+            <span class="text-green-500 font-bold tracking-widest">:: SYSTEM_LOG ::</span>
+            <button id="btn-toggle-log-internal" class="text-green-500 hover:text-white px-2">[ HIDE ]</button>
         </div>
-        <div id="sys-log-content" class="flex-1 overflow-y-auto p-2 space-y-1 font-mono">
-            <div class="text-gray-500">Boot sequence initiated...</div>
+        <div id="sys-log-content" class="flex-1 overflow-y-auto p-2 space-y-1">
+            <div class="text-gray-500">Initializing NeuroDark23 Native...</div>
         </div>
     </div>
 
-    <!-- MENÚ -->
-    <div id="main-menu" class="fixed inset-0 z-[150] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4">
-        <div class="w-72 border border-gray-700 p-6 bg-gray-900 rounded">
-            <h2 class="text-xl text-white tracking-widest mb-4 border-b border-green-600 pb-2 text-center font-bold">SYSTEM MENU</h2>
+    <!-- MODAL DE EXPORTACIÓN -->
+    <div id="export-modal" class="fixed inset-0 z-[150] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-6">
+        <div class="w-80 border border-green-500 p-6 bg-gray-900 rounded shadow-[0_0_50px_rgba(0,255,0,0.2)]">
+            <h2 class="text-xl text-white tracking-widest mb-4 border-b border-green-600 pb-2 text-center font-bold">RENDER WAV</h2>
+            <div class="mb-6">
+                <label class="text-[10px] text-green-500 font-bold block mb-2 tracking-widest">LOOPS:</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <button class="export-rep-btn active" data-rep="1">1x</button>
+                    <button class="export-rep-btn" data-rep="2">2x</button>
+                    <button class="export-rep-btn" data-rep="4">4x</button>
+                    <button class="export-rep-btn" data-rep="8">8x</button>
+                </div>
+            </div>
+            <button id="btn-start-render" class="w-full py-3 bg-green-900/20 border border-green-500 text-green-400 hover:bg-green-500 hover:text-black font-bold tracking-widest transition-all mb-2">RENDER</button>
+            <button id="btn-close-export" class="w-full py-2 text-gray-500 hover:text-white text-xs">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- MENÚ PRINCIPAL -->
+    <div id="main-menu" class="fixed inset-0 z-[100] bg-black/95 backdrop-blur hidden flex-col items-center justify-center gap-4">
+        <div class="w-72 border border-gray-800 p-6 bg-gray-900/90 rounded">
+            <h2 class="text-xl text-white tracking-widest mb-6 border-b border-green-600 pb-2 text-center glitch-text font-bold">MENU</h2>
             
-            <button id="btn-toggle-log-menu" class="w-full py-3 mb-2 bg-gray-800 border border-green-900 text-green-400 text-xs font-bold">TOGGLE LOG CONSOLE</button>
-            <button id="btn-menu-panic" class="w-full py-3 mb-2 border border-red-600 text-white bg-red-900/20 text-xs font-bold">RESTART ENGINE</button>
-            <button id="btn-menu-close" class="mt-4 w-full py-2 bg-gray-800 text-gray-400 text-xs">[ CLOSE ]</button>
+            <div class="mb-6">
+                <h3 class="text-[10px] text-gray-500 mb-2 font-bold tracking-widest uppercase">Modules</h3>
+                <div id="synth-list-container" class="flex flex-col gap-1 mb-2"></div>
+                <button id="btn-add-synth" class="w-full py-2 text-xs border border-dashed border-green-700 text-green-500 hover:bg-green-900/20">
+                    + ADD BASS
+                </button>
+            </div>
+
+            <div class="space-y-2">
+                <button id="btn-open-export" class="w-full py-3 bg-gray-800 border border-green-900 text-green-400 hover:bg-green-900/30 text-xs font-bold tracking-widest">EXPORT WAV</button>
+                <button id="btn-toggle-log-menu" class="w-full py-2 border border-gray-600 text-gray-300 hover:bg-gray-800 text-xs">SHOW LOGS</button>
+                <button id="btn-menu-clear" class="w-full py-2 border border-red-900/50 text-red-400 hover:bg-red-900/20 text-xs">CLEAR PATTERN</button>
+                <button id="btn-menu-panic" class="w-full py-2 border border-red-600 text-white bg-red-900/50 hover:bg-red-800 text-xs font-bold">RESET</button>
+            </div>
+
+            <button id="btn-menu-close" class="mt-6 w-full py-2 bg-gray-800 hover:bg-gray-700 text-xs text-white">RESUME</button>
         </div>
     </div>
 
@@ -59,8 +88,8 @@
             <div id="activity-led" class="w-2 h-2 bg-green-900 rounded-full shadow-[0_0_5px_green]"></div>
             <span class="text-lg font-bold tracking-widest text-white glitch-text">NEURODARK23</span>
         </div>
-        <button id="btn-open-menu" class="text-green-500 hover:text-white p-2">
-            <i data-lucide="menu" class="w-6 h-6"></i>
+        <button id="btn-open-menu" class="text-2xl text-green-500 hover:text-white leading-none pb-1 font-bold">
+            &#9776;
         </button>
     </header>
 
@@ -70,18 +99,17 @@
             
             <!-- DASHBOARD -->
             <div class="bg-[#0a0a0a] p-4 rounded-xl border border-gray-800 flex justify-between items-center gap-4 relative overflow-hidden">
-                <div class="absolute inset-0 bg-gradient-to-r from-green-900/10 to-purple-900/10 pointer-events-none"></div>
+                <div class="absolute inset-0 bg-gradient-to-r from-green-900/5 to-purple-900/5 pointer-events-none"></div>
 
                 <div class="text-center z-10">
                     <label class="text-[9px] text-gray-500 block tracking-widest">BPM</label>
                     <input type="number" id="bpm-input" value="174" class="bg-transparent text-green-500 font-bold text-2xl w-16 text-center border-b border-gray-800 focus:border-green-500 outline-none">
                 </div>
 
-                <!-- PLAY -->
                 <div id="play-container" class="relative w-24 h-24 flex items-center justify-center z-10">
                     <svg id="play-clock-svg" class="absolute w-full h-full transform -rotate-90 pointer-events-none" viewBox="0 0 100 100"></svg>
-                    <button id="btn-play" class="w-14 h-14 rounded-full bg-[#111] border-2 border-gray-600 flex items-center justify-center text-gray-300 hover:text-green-400 hover:border-green-500 transition-all shadow-xl active:scale-95 z-20">
-                        <i data-lucide="play" class="w-6 h-6 fill-current"></i>
+                    <button id="btn-play" class="w-14 h-14 rounded-full bg-[#111] border border-gray-700 flex items-center justify-center text-2xl text-gray-400 hover:text-green-400 hover:border-green-500 transition-all shadow-2xl active:scale-95 z-20 pb-1 pl-1">
+                        &#9658;
                     </button>
                 </div>
 
@@ -96,24 +124,24 @@
             <!-- TRACK BAR -->
             <div>
                 <div class="flex justify-between items-end mb-2">
-                    <span class="text-[10px] text-gray-500 tracking-widest">SEQUENCE CHAIN</span>
+                    <span class="text-[10px] text-gray-500 tracking-widest">CHAIN</span>
                     <div class="flex gap-1">
-                        <button id="btn-copy-block" class="track-ctrl-btn">DUB</button>
-                        <button id="btn-move-left" class="track-ctrl-btn">&larr;</button>
-                        <button id="btn-move-right" class="track-ctrl-btn">&rarr;</button>
+                        <button id="btn-copy-block" class="track-ctrl-btn" title="Duplicate">DUB</button>
+                        <button id="btn-move-left" class="track-ctrl-btn" title="Move Left">&larr;</button>
+                        <button id="btn-move-right" class="track-ctrl-btn" title="Move Right">&rarr;</button>
                         <div class="w-2"></div>
-                        <button id="btn-add-block" class="track-ctrl-btn text-green-500 border-green-900">+</button>
-                        <button id="btn-del-block" class="track-ctrl-btn text-red-500 border-red-900">&times;</button>
+                        <button id="btn-add-block" class="track-ctrl-btn text-green-500 border-green-900 hover:bg-green-900/20">+</button>
+                        <button id="btn-del-block" class="track-ctrl-btn text-red-500 border-red-900 hover:bg-red-900/20">&times;</button>
                     </div>
                 </div>
                 <div id="track-bar" class="h-14 border border-gray-800 bg-[#080808] rounded flex items-center gap-1 px-2 overflow-x-auto whitespace-nowrap custom-scroll shadow-inner"></div>
             </div>
 
             <!-- TABS -->
-            <div id="instrument-tabs-container" class="flex flex-wrap gap-1 bg-gray-900/30 p-2 rounded border border-gray-800/50"></div>
+            <div id="instrument-tabs-container" class="flex flex-wrap gap-1"></div>
 
             <!-- MATRIX -->
-            <div id="matrix-container" class="grid gap-1.5 w-full select-none p-2 bg-black rounded border border-gray-800 shadow-inner"></div>
+            <div id="matrix-container" class="grid gap-1.5 w-full select-none p-1 bg-black/30 rounded border border-gray-900/50"></div>
             
             <div class="h-10"></div> 
         </div>
@@ -123,13 +151,12 @@
     <div id="editor-panel" class="panel-docked fixed bottom-0 left-0 w-full bg-[#0a0a0a] border-t border-gray-800 flex flex-col z-40 transition-transform duration-300 shadow-[0_-5px_30px_rgba(0,0,0,0.8)]">
         
         <div class="h-8 bg-black flex items-center justify-between px-4 border-b border-gray-800">
-            <span id="step-info-display" class="text-[10px] text-gray-500 tracking-widest">EDITING STEP</span>
-            <button id="btn-dock-mode" class="text-gray-500 hover:text-white p-1">
-                <i data-lucide="maximize-2" class="w-4 h-4"></i>
+            <span id="step-info-display" class="text-[10px] text-gray-500 tracking-widest">EDIT</span>
+            <button id="btn-dock-mode" class="text-lg text-gray-500 hover:text-white leading-none px-2 pb-1 font-bold">
+                &#9633;
             </button>
         </div>
 
-        <!-- BASS CONTROLS -->
         <div id="editor-bass" class="flex-1 p-3 flex flex-col gap-3">
             <div class="flex justify-between items-center">
                 <div class="flex items-center gap-1 bg-gray-900 rounded p-1 border border-gray-800">
@@ -142,9 +169,7 @@
                     <input type="range" id="dist-slider" min="0" max="100" value="20" class="flex-1 h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer">
                 </div>
             </div>
-
-            <!-- TECLADO -->
-            <div class="grid grid-cols-7 gap-1 h-24 bg-black p-1 rounded border border-gray-800 shadow-inner select-none">
+            <div class="grid grid-cols-7 gap-1 h-24 bg-black p-1 rounded border border-gray-800 shadow-inner">
                 <button class="piano-key white-key" data-note="C">C</button>
                 <button class="piano-key white-key" data-note="D">D</button>
                 <button class="piano-key white-key" data-note="E">E</button>
@@ -162,15 +187,14 @@
             </div>
             
             <button id="btn-delete-note" class="w-full py-1 text-[10px] text-red-500 border border-red-900/30 hover:bg-red-900/10 rounded tracking-widest font-bold transition-colors">
-                REMOVE NOTE
+                CLEAR NOTE
             </button>
         </div>
 
-        <!-- DRUM CONTROLS -->
         <div id="editor-drum" class="hidden flex-1 p-2 overflow-y-auto custom-scroll"></div>
     </div>
 
-    <!-- MODULES -->
+    <!-- MÓDULOS -->
     <script src="Synth/effects/distortion.js"></script>
     <script src="Synth/bass_synth.js"></script>
     <script src="Synth/drum_synth.js"></script>
