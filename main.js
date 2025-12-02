@@ -1,6 +1,5 @@
 /*
- * NEURODARK 23 - NATIVE CORE v21
- * Zero external dependencies. Unicode UI.
+ * NEURODARK 23 - NATIVE CORE v22 (Filters)
  */
 
 const AppState = {
@@ -38,7 +37,7 @@ function safeClick(id, fn) {
 
 // --- BOOTSTRAP ---
 function bootstrap() {
-    window.logToScreen("Native Init...");
+    window.logToScreen("Boot Filters...");
     try {
         if(!window.timeMatrix) throw "TimeMatrix Missing";
         if(typeof window.BassSynth === 'undefined') throw "BassSynth Missing";
@@ -130,12 +129,14 @@ async function renderAudio() {
         offMaster.gain.value = 0.6;
         offMaster.connect(offCtx.destination);
 
-        // Clones
         const offBass = [];
         bassSynths.forEach(ls => {
             const s = new window.BassSynth(ls.id);
             s.init(offCtx, offMaster);
+            // Copy Params
             s.setDistortion(ls.params.distortion);
+            s.setCutoff(ls.params.cutoff);
+            s.setResonance(ls.params.resonance);
             offBass.push(s);
         });
         const offDrum = new DrumSynth();
@@ -227,8 +228,8 @@ function updatePlayClock(step) {
     for(let i=0; i<total; i++) {
         const seg = document.getElementById(`clock-seg-${i}`);
         if(!seg) continue;
-        if (i === step) { seg.setAttribute("stroke", "#0f0"); seg.setAttribute("opacity", "1"); } 
-        else if (i < step) { seg.setAttribute("stroke", "#040"); seg.setAttribute("opacity", "0.5"); } 
+        if (i === step) { seg.setAttribute("stroke", "#00ff41"); seg.setAttribute("opacity", "1"); } 
+        else if (i < step) { seg.setAttribute("stroke", "#004411"); seg.setAttribute("opacity", "0.5"); } 
         else { seg.setAttribute("stroke", "#222"); seg.setAttribute("opacity", "0.3"); }
     }
 }
@@ -302,14 +303,14 @@ function renderInstrumentTabs() {
     bassSynths.forEach(s => {
         const b = document.createElement('button');
         const active = AppState.activeView === s.id;
-        b.className = `px-3 py-1 text-[10px] font-bold border uppercase ${active ? 'text-green-400 bg-gray-900 border-green-700' : 'text-gray-500 border-transparent'}`;
+        b.className = `px-3 py-1 text-[10px] font-bold border uppercase transition-all ${active ? 'text-green-400 bg-gray-900 border-green-500 shadow-md' : 'text-gray-500 border-transparent hover:text-gray-300'}`;
         b.innerText = s.id;
         b.onclick = () => setTab(s.id);
         c.appendChild(b);
     });
     const d = document.createElement('button');
     const dActive = AppState.activeView === 'drum';
-    d.className = `px-3 py-1 text-[10px] font-bold border uppercase ${dActive ? 'text-green-400 bg-gray-900 border-green-700' : 'text-gray-500 border-transparent'}`;
+    d.className = `px-3 py-1 text-[10px] font-bold border uppercase transition-all ${dActive ? 'text-green-400 bg-gray-900 border-green-500 shadow-md' : 'text-gray-500 border-transparent hover:text-gray-300'}`;
     d.innerText = "DRUMS";
     d.onclick = () => setTab('drum');
     c.appendChild(d);
@@ -320,7 +321,15 @@ function setTab(v) {
     renderInstrumentTabs();
     updateEditors();
     const s = bassSynths.find(sy=>sy.id===v);
-    if(s) document.getElementById('dist-slider').value = s.params.distortion;
+    if(s) {
+        const slDist = document.getElementById('dist-slider');
+        const slCut = document.getElementById('cutoff-slider');
+        const slRes = document.getElementById('res-slider');
+        
+        if(slDist) slDist.value = s.params.distortion;
+        if(slCut) slCut.value = s.params.cutoff;
+        if(slRes) slRes.value = s.params.resonance;
+    }
 }
 
 function renderTrackBar() {
@@ -493,10 +502,20 @@ document.addEventListener('DOMContentLoaded', () => {
     safeClick('oct-up', () => { if(AppState.currentOctave<6) AppState.currentOctave++; octD.innerText=AppState.currentOctave; });
     safeClick('oct-down', () => { if(AppState.currentOctave>1) AppState.currentOctave--; octD.innerText=AppState.currentOctave; });
     
-    const dist = document.getElementById('dist-slider');
-    if(dist) dist.oninput = (e) => {
-        const v = parseInt(e.target.value);
-        const s = bassSynths.find(sy => sy.id === AppState.activeView);
-        if(s) s.setDistortion(v);
+    // NEW SLIDERS LOGIC
+    const handleSlider = (id, prop) => {
+        const el = document.getElementById(id);
+        if(el) el.oninput = (e) => {
+            const v = parseInt(e.target.value);
+            const s = bassSynths.find(sy => sy.id === AppState.activeView);
+            if(s) {
+                if(prop === 'distortion') s.setDistortion(v);
+                if(prop === 'cutoff') s.setCutoff(v);
+                if(prop === 'resonance') s.setResonance(v);
+            }
+        };
     };
+    handleSlider('dist-slider', 'distortion');
+    handleSlider('cutoff-slider', 'cutoff');
+    handleSlider('res-slider', 'resonance');
 });
