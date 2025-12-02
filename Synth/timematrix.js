@@ -8,7 +8,6 @@ class TimeMatrix {
         this.gridCols = 4; // Default
         this.blocks = [];
         this.containerId = 'matrix-container'; 
-        this.selectedStep = 0; // Inicializar
         this.addBlock();
     }
 
@@ -70,11 +69,6 @@ class TimeMatrix {
         for (let i = 0; i < this.totalSteps; i++) {
             const el = document.createElement('div');
             el.className = 'step-box';
-            
-            // --- FIX: Highlight selected step ---
-            if (i === this.selectedStep) {
-                el.classList.add('step-selected');
-            }
             
             if (activeView === 'drum') this.drawDrums(el, block.drums[i]);
             else {
