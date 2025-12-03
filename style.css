@@ -1,7 +1,8 @@
-/* NEURODARK 23 - NATIVE STYLES v23 */
+/* NEURODARK 23 - NATIVE STYLES */
 :root {
     --neon-green: #00ff41;
-    --neon-orange: #ff9900;
+    --neon-purple: #bc13fe;
+    --neon-orange: #ff9d00; /* Nuevo color para selección */
     --dark-bg: #050505;
 }
 
@@ -23,17 +24,25 @@ body {
 
 /* TRACK CONTROLS */
 .track-ctrl-btn {
-    padding: 2px 8px; background: #111; border: 1px solid #444; border-radius: 4px;
-    font-size: 10px; font-weight: bold; color: #888; transition: all 0.1s;
+    padding: 2px 8px;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    color: #888;
+    transition: all 0.1s;
 }
 .track-ctrl-btn:hover { border-color: #fff; color: #fff; }
 .track-ctrl-btn:active { background: #333; }
 
 /* TRACK BAR BLOCKS */
 .track-block {
-    min-width: 40px; height: 36px; background: #111; border: 1px solid #333;
+    min-width: 40px; height: 36px;
+    background: #111; border: 1px solid #333;
     display: flex; align-items: center; justify-content: center;
-    font-size: 11px; cursor: pointer; color: #555; border-radius: 4px;
+    font-size: 11px; cursor: pointer; color: #555;
+    border-radius: 4px;
 }
 .track-block-editing { border-color: var(--neon-green); color: var(--neon-green); background: #001a00; font-weight: bold; }
 .track-block-playing { box-shadow: 0 0 10px rgba(255,255,255,0.2); border-color: #fff; color: #fff; z-index: 10; }
@@ -41,10 +50,6 @@ body {
 /* EXPORT MODAL */
 .export-rep-btn { padding: 10px; background: #111; border: 1px solid #444; color: #666; font-size: 12px; font-weight: bold; }
 .export-rep-btn.active { border-color: var(--neon-green); color: var(--neon-green); background: #002200; box-shadow: 0 0 10px rgba(0,255,65,0.2); }
-
-/* GRID VIEW BUTTONS */
-.grid-view-btn { padding: 6px; background: #111; border: 1px solid #444; color: #666; font-size: 10px; flex: 1; }
-.grid-view-btn.active { border-color: var(--neon-orange); color: var(--neon-orange); background: #221100; }
 
 /* MATRIX STEPS */
 .step-box {
@@ -54,13 +59,12 @@ body {
 }
 .step-box:active { transform: scale(0.95); }
 
-/* --- STEP SELECCIONADO (MARCO NARANJA) --- */
-.step-selected { 
-    border: 2px solid var(--neon-orange) !important; 
-    /* Brillo interior naranja + Sombra exterior sutil */
-    box-shadow: inset 0 0 12px rgba(255, 153, 0, 0.5), 0 0 10px rgba(255, 153, 0, 0.2);
+/* VISUALIZADOR DE SELECCIÓN NARANJA (Frame interior) */
+.step-selected-orange {
+    border-color: var(--neon-orange) !important;
+    /* Inset shadow crea el marco brillante interior */
+    box-shadow: inset 0 0 0 2px var(--neon-orange), inset 0 0 15px rgba(255, 157, 0, 0.4);
     z-index: 20;
-    background-color: rgba(255, 153, 0, 0.05);
 }
 
 .step-playing { background-color: rgba(255, 255, 255, 0.15) !important; border-color: rgba(255,255,255,0.5) !important; }
@@ -75,4 +79,4 @@ body {
 .panel-overlay { height: 380px; }
 
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; background: var(--neon-green); border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green); }
-.glitch-text { position: relative; color: #fff; text-shadow: 2px 0 #bc13fe, -2px 0 #00ff41; }
+.glitch-text { position: relative; color: #fff; text-shadow: 2px 0 var(--neon-purple), -2px 0 var(--neon-green); }
