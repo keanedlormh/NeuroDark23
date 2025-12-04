@@ -153,7 +153,8 @@ async function renderAudio() {
                         const n = blk.tracks[tid][s];
                         if(n) {
                             const syn = offBass.find(k=>k.id===tid);
-                            if(syn) syn.play(n.note, n.octave, t, 0.25);
+                            // Pass slide/accent params
+                            if(syn) syn.play(n.note, n.octave, t, 0.25, n.slide, n.accent);
                         }
                     });
                     t += secPerStep;
@@ -256,7 +257,7 @@ function scheduleNote(step, block, time) {
         const n = data.tracks[tid][step];
         if(n) {
             const s = bassSynths.find(sy => sy.id === tid);
-            if(s) s.play(n.note, n.octave, time, 0.25);
+            if(s) s.play(n.note, n.octave, time, 0.25, n.slide, n.accent);
         }
     });
 }
@@ -379,6 +380,25 @@ function updateEditors() {
     if(info) info.innerText = `STEP ${AppState.selectedStep+1} // ${AppState.activeView.toUpperCase()}`;
     if(AppState.activeView === 'drum') { bEd.classList.add('hidden'); dEd.classList.remove('hidden'); renderDrumRows(); }
     else { bEd.classList.remove('hidden'); dEd.classList.add('hidden'); }
+    
+    // UPDATE BUTTON STATES (Slide/Accent)
+    const slideBtn = document.getElementById('btn-toggle-slide');
+    const accBtn = document.getElementById('btn-toggle-accent');
+    
+    // Reset defaults
+    if(slideBtn) slideBtn.classList.remove('text-green-400', 'border-green-600');
+    if(accBtn) accBtn.classList.remove('text-green-400', 'border-green-600');
+
+    if(AppState.activeView !== 'drum') {
+         const blk = window.timeMatrix.blocks[AppState.editingBlock];
+         const noteData = blk.tracks[AppState.activeView] ? blk.tracks[AppState.activeView][AppState.selectedStep] : null;
+         
+         if(noteData) {
+             if(noteData.slide && slideBtn) slideBtn.classList.add('text-green-400', 'border-green-600');
+             if(noteData.accent && accBtn) accBtn.classList.add('text-green-400', 'border-green-600');
+         }
+    }
+
     window.timeMatrix.selectedStep = AppState.selectedStep;
     window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
 }
@@ -534,7 +554,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if(!s) return;
             const b = window.timeMatrix.blocks[AppState.editingBlock];
             if(!b.tracks[s.id]) window.timeMatrix.registerTrack(s.id);
-            b.tracks[s.id][AppState.selectedStep] = { note, octave: AppState.currentOctave };
+            // Default: no slide, no accent
+            const prev = b.tracks[s.id][AppState.selectedStep];
+            b.tracks[s.id][AppState.selectedStep] = { 
+                note, 
+                octave: AppState.currentOctave,
+                slide: prev ? prev.slide : false,
+                accent: prev ? prev.accent : false
+            };
             s.play(note, AppState.currentOctave, audioCtx.currentTime);
             updateEditors();
         };
@@ -544,6 +571,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const s = bassSynths.find(sy => sy.id === AppState.activeView);
         if(s) { window.timeMatrix.blocks[AppState.editingBlock].tracks[s.id][AppState.selectedStep] = null; updateEditors(); }
     });
+
+    // TOGGLE MODIFIERS
+    const toggleNoteMod = (prop) => {
+        if(AppState.activeView === 'drum') return;
+        const b = window.timeMatrix.blocks[AppState.editingBlock];
+        const track = b.tracks[AppState.activeView];
+        if(!track) return;
+        const note = track[AppState.selectedStep];
+        if(note) {
+            note[prop] = !note[prop];
+            updateEditors();
+        }
+    };
+    safeClick('btn-toggle-slide', () => toggleNoteMod('slide'));
+    safeClick('btn-toggle-accent', () => toggleNoteMod('accent'));
     
     const bpm = document.getElementById('bpm-input');
     if(bpm) bpm.onchange = (e) => AppState.bpm = e.target.value;
