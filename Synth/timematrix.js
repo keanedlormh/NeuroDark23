@@ -8,8 +8,8 @@ class TimeMatrix {
         this.gridCols = 4;
         this.blocks = [];
         this.containerId = 'matrix-container';
-        // Inicializar selectedStep para evitar errores si main.js tarda en setearlo
         this.selectedStep = 0;
+        this.clipboard = null; // Memoria para Copy/Paste
         this.addBlock();
     }
 
@@ -31,10 +31,42 @@ class TimeMatrix {
         const org = this.blocks[idx];
         const newTracks = {};
         Object.keys(org.tracks).forEach(k => {
-            // Deep copy of objects inside the array to preserve slide/accent flags
             newTracks[k] = org.tracks[k].map(n => n ? {...n} : null);
         });
         this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
+    }
+
+    // --- NUEVO: SISTEMA DE CLIPBOARD ---
+    
+    copyToClipboard(idx) {
+        if (!this.blocks[idx]) return false;
+        const org = this.blocks[idx];
+        
+        // Deep Copy Manual para evitar referencias
+        const newTracks = {};
+        Object.keys(org.tracks).forEach(k => {
+            newTracks[k] = org.tracks[k].map(n => n ? {...n} : null);
+        });
+        const newDrums = org.drums.map(d => [...d]);
+
+        this.clipboard = { tracks: newTracks, drums: newDrums };
+        return true;
+    }
+
+    pasteFromClipboard(idx) {
+        if (!this.clipboard) return false;
+        
+        // Deep Copy desde el Clipboard (para poder pegar múltiples veces sin vincularlos)
+        const source = this.clipboard;
+        const newTracks = {};
+        Object.keys(source.tracks).forEach(k => {
+            newTracks[k] = source.tracks[k].map(n => n ? {...n} : null);
+        });
+        const newDrums = source.drums.map(d => [...d]);
+
+        // Insertar después del índice seleccionado
+        this.blocks.splice(idx + 1, 0, { tracks: newTracks, drums: newDrums });
+        return true;
     }
     
     removeBlock(idx) { if(this.blocks.length<=1) this.clearBlock(0); else this.blocks.splice(idx,1); }
