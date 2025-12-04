@@ -30,7 +30,10 @@ class TimeMatrix {
         if(!this.blocks[idx]) return;
         const org = this.blocks[idx];
         const newTracks = {};
-        Object.keys(org.tracks).forEach(k => newTracks[k] = [...org.tracks[k]]);
+        Object.keys(org.tracks).forEach(k => {
+            // Deep copy of objects inside the array to preserve slide/accent flags
+            newTracks[k] = org.tracks[k].map(n => n ? {...n} : null);
+        });
         this.blocks.splice(idx+1, 0, { tracks: newTracks, drums: org.drums.map(d=>[...d]) });
     }
     
@@ -92,7 +95,9 @@ class TimeMatrix {
     drawNote(el, data, i) {
         if(data) {
             el.classList.add('has-bass');
-            el.innerHTML = `<div class="flex flex-col items-center pointer-events-none"><span class="text-xl font-bold">${data.note}</span><span class="text-[10px] opacity-70">${data.octave}</span></div>`;
+            // MODIFICADO: Formato para Slide (~) y Accent (^)
+            const noteStr = `${data.accent ? '^' : ''}${data.note}${data.slide ? '~' : ''}`;
+            el.innerHTML = `<div class="flex flex-col items-center pointer-events-none"><span class="text-xl font-bold">${noteStr}</span><span class="text-[10px] opacity-70">${data.octave}</span></div>`;
         } else {
             el.classList.remove('has-bass');
             el.innerHTML = `<span class="text-[10px] text-gray-700 font-mono pointer-events-none">${i+1}</span>`;
