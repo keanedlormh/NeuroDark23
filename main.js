@@ -12,9 +12,9 @@ const AppState = {
     activeView: 'bass-1',
     currentOctave: 3,
     distortionLevel: 20,
-    panelCollapsed: false, // Nueva propiedad
-    followPlayback: false, // Nueva propiedad
-    uiMode: 'analog', // 'analog' or 'digital'
+    panelCollapsed: false, // Control de estado del panel
+    followPlayback: false, 
+    uiMode: 'analog',
     exportReps: 1
 };
 
@@ -135,7 +135,6 @@ async function renderAudio() {
         bassSynths.forEach(ls => {
             const s = new window.BassSynth(ls.id);
             s.init(offCtx, offMaster);
-            // Copy Params
             s.setDistortion(ls.params.distortion);
             s.setCutoff(ls.params.cutoff);
             s.setResonance(ls.params.resonance);
@@ -279,9 +278,7 @@ function drawLoop() {
             updatePlayClock(ev.step);
             
             // --- NUEVA LÓGICA DE VISUALIZACIÓN ---
-            // Si el modo seguimiento está ON, y el bloque que suena es distinto al que vemos...
             if(AppState.followPlayback && ev.block !== AppState.editingBlock) {
-                // ...cambiamos la vista al bloque actual automáticamente.
                 AppState.editingBlock = ev.block;
                 updateEditors();
                 renderTrackBar();
@@ -393,7 +390,6 @@ function updateEditors() {
     const slideBtn = document.getElementById('btn-toggle-slide');
     const accBtn = document.getElementById('btn-toggle-accent');
     
-    // Reset defaults
     if(slideBtn) slideBtn.classList.remove('text-green-400', 'border-green-600');
     if(accBtn) accBtn.classList.remove('text-green-400', 'border-green-600');
 
@@ -495,19 +491,22 @@ function toggleVisualizerMode() {
     }
 }
 
+// CORREGIDO: TOGGLE PANEL
 function togglePanelState() {
     AppState.panelCollapsed = !AppState.panelCollapsed;
     const p = document.getElementById('editor-panel');
     const btn = document.getElementById('btn-minimize-panel');
     
     if(AppState.panelCollapsed) {
+        // COLAPSAR
         p.classList.remove('panel-expanded');
         p.classList.add('panel-collapsed');
-        btn.innerHTML = "&#9650;"; // Flecha Arriba (Expandir)
+        btn.innerHTML = "&#9650;"; // Flecha Arriba (Mostrar)
     } else {
+        // EXPANDIR
         p.classList.remove('panel-collapsed');
         p.classList.add('panel-expanded');
-        btn.innerHTML = "&#9660;"; // Flecha Abajo (Colapsar)
+        btn.innerHTML = "&#9660;"; // Flecha Abajo (Ocultar)
     }
 }
 
@@ -532,8 +531,8 @@ document.addEventListener('DOMContentLoaded', () => {
     safeClick('btn-toggle-ui-mode', toggleUIMode);
     safeClick('btn-toggle-visualizer', toggleVisualizerMode);
 
-    // Toggle Panel
-    safeClick('btn-minimize-panel', togglePanelState);
+    // Toggle Panel (Both Header and Button)
+    safeClick('btn-minimize-panel', (e) => { e.stopPropagation(); togglePanelState(); });
     safeClick('panel-header-trigger', togglePanelState);
 
     // Log
