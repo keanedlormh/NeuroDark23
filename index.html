@@ -190,7 +190,8 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-7 gap-1 h-24 bg-black p-1 rounded border border-gray-800 shadow-inner select-none">
+            <!-- PIANO -->
+            <div class="grid grid-cols-7 gap-1 h-20 bg-black p-1 rounded border border-gray-800 shadow-inner select-none">
                 <button class="piano-key white-key" data-note="C">C</button>
                 <button class="piano-key white-key" data-note="D">D</button>
                 <button class="piano-key white-key" data-note="E">E</button>
@@ -205,6 +206,12 @@
                 <button class="piano-key black-key" data-note="G#">G#</button>
                 <button class="piano-key black-key" data-note="A#">A#</button>
                 <div class="pointer-events-none"></div>
+            </div>
+            
+            <!-- STEP MODIFIERS -->
+            <div class="flex gap-2">
+                <button id="btn-toggle-slide" class="flex-1 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold">~ SLIDE</button>
+                <button id="btn-toggle-accent" class="flex-1 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold">^ ACCENT</button>
             </div>
             
             <button id="btn-delete-note" class="w-full py-1 text-[10px] text-red-500 border border-red-900/30 hover:bg-red-900/10 rounded tracking-widest font-bold transition-colors">CLEAR NOTE</button>
