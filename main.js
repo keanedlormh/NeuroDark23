@@ -13,6 +13,7 @@ const AppState = {
     currentOctave: 3,
     distortionLevel: 20,
     panelMode: 'docked',
+    uiMode: 'analog', // 'analog' or 'digital'
     exportReps: 1
 };
 
@@ -320,16 +321,39 @@ function setTab(v) {
     AppState.activeView = v;
     renderInstrumentTabs();
     updateEditors();
-    const s = bassSynths.find(sy=>sy.id===v);
-    if(s) {
-        const slDist = document.getElementById('dist-slider');
-        const slCut = document.getElementById('cutoff-slider');
-        const slRes = document.getElementById('res-slider');
-        
-        if(slDist) slDist.value = s.params.distortion;
-        if(slCut) slCut.value = s.params.cutoff;
-        if(slRes) slRes.value = s.params.resonance;
-    }
+    syncControlsFromSynth(v);
+}
+
+// --- NEW UI SYNC ---
+function syncControlsFromSynth(viewId) {
+    const s = bassSynths.find(sy => sy.id === viewId);
+    if(!s) return;
+    
+    // ANALOG DOM
+    const slDist = document.getElementById('dist-slider');
+    const slCut = document.getElementById('cutoff-slider');
+    const slRes = document.getElementById('res-slider');
+
+    // DIGITAL DOM
+    const digDist = document.getElementById('dist-digital');
+    const digCut = document.getElementById('cutoff-digital');
+    const digRes = document.getElementById('res-digital');
+
+    // MAPPINGS
+    // Cutoff: 100-5000 -> 0-100%
+    const cutPerc = Math.round(((s.params.cutoff - 100) / 4900) * 100);
+    // Resonance: 0-20 -> 0-100% (val * 5)
+    const resPerc = Math.round(s.params.resonance * 5);
+    // Distortion: 0-100 -> Direct
+
+    // UPDATE UI
+    if(slDist) slDist.value = s.params.distortion;
+    if(slCut) slCut.value = s.params.cutoff;
+    if(slRes) slRes.value = s.params.resonance;
+
+    if(digDist) digDist.value = s.params.distortion;
+    if(digCut) digCut.value = Math.max(0, Math.min(100, cutPerc));
+    if(digRes) digRes.value = Math.max(0, Math.min(100, resPerc));
 }
 
 function renderTrackBar() {
@@ -409,6 +433,28 @@ function toggleTransport() {
     }
 }
 
+function toggleUIMode() {
+    AppState.uiMode = AppState.uiMode === 'analog' ? 'digital' : 'analog';
+    const btn = document.getElementById('btn-toggle-ui-mode');
+    const analogP = document.getElementById('fx-controls-analog');
+    const digitalP = document.getElementById('fx-controls-digital');
+    
+    if(AppState.uiMode === 'digital') {
+        btn.innerText = "UI MODE: DIGITAL";
+        btn.classList.add('border-green-500', 'text-green-300');
+        analogP.classList.add('opacity-0', 'pointer-events-none');
+        digitalP.classList.remove('hidden');
+    } else {
+        btn.innerText = "UI MODE: ANALOG";
+        btn.classList.remove('border-green-500', 'text-green-300');
+        analogP.classList.remove('opacity-0', 'pointer-events-none');
+        digitalP.classList.add('hidden');
+    }
+    
+    // Refresh Sync
+    syncControlsFromSynth(AppState.activeView);
+}
+
 // --- MODALS ---
 function toggleMenu() { const m=document.getElementById('main-menu'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
 function toggleExportModal() { const m=document.getElementById('export-modal'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
@@ -421,10 +467,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchstart', globalUnlock);
     
     safeClick('btn-play', toggleTransport);
+    safeClick('app-logo', toggleTransport); // LOGO PLAY TRIGGER
     
     safeClick('btn-open-menu', () => { renderSynthMenu(); toggleMenu(); });
     safeClick('btn-menu-close', toggleMenu);
     
+    // Toggle UI
+    safeClick('btn-toggle-ui-mode', toggleUIMode);
+
     // Log
     const logPanel = document.getElementById('sys-log-panel');
     const logBtn = document.getElementById('btn-toggle-log-internal');
@@ -502,7 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeClick('oct-up', () => { if(AppState.currentOctave<6) AppState.currentOctave++; octD.innerText=AppState.currentOctave; });
     safeClick('oct-down', () => { if(AppState.currentOctave>1) AppState.currentOctave--; octD.innerText=AppState.currentOctave; });
     
-    // NEW SLIDERS LOGIC
+    // ANALOG SLIDERS LOGIC
     const handleSlider = (id, prop) => {
         const el = document.getElementById(id);
         if(el) el.oninput = (e) => {
@@ -512,10 +562,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(prop === 'distortion') s.setDistortion(v);
                 if(prop === 'cutoff') s.setCutoff(v);
                 if(prop === 'resonance') s.setResonance(v);
+                // Sync to Digital
+                syncControlsFromSynth(AppState.activeView);
             }
         };
     };
     handleSlider('dist-slider', 'distortion');
     handleSlider('cutoff-slider', 'cutoff');
     handleSlider('res-slider', 'resonance');
+
+    // DIGITAL INPUTS LOGIC
+    const handleDigital = (id, prop) => {
+        const el = document.getElementById(id);
+        if(el) el.onchange = (e) => {
+            let val = parseInt(e.target.value);
+            // Clamp 0-100
+            val = Math.max(0, Math.min(100, val));
+            e.target.value = val;
+
+            const s = bassSynths.find(sy => sy.id === AppState.activeView);
+            if(s) {
+                if(prop === 'distortion') {
+                    // 0-100 -> Direct
+                    s.setDistortion(val);
+                }
+                if(prop === 'cutoff') {
+                    // 0-100 -> 100-5000 Hz
+                    // val/100 * 4900 + 100
+                    const freq = Math.floor((val / 100) * 4900) + 100;
+                    s.setCutoff(freq);
+                }
+                if(prop === 'resonance') {
+                    // 0-100 -> 0-20
+                    const res = val / 5;
+                    s.setResonance(res);
+                }
+                // Sync Back to Analog
+                syncControlsFromSynth(AppState.activeView);
+            }
+        };
+    };
+    handleDigital('dist-digital', 'distortion');
+    handleDigital('cutoff-digital', 'cutoff');
+    handleDigital('res-digital', 'resonance');
 });
