@@ -120,7 +120,12 @@
                 <div class="flex justify-between items-end mb-2">
                     <span class="text-[10px] text-gray-500 tracking-widest">CHAIN</span>
                     <div class="flex gap-1">
-                        <button id="btn-copy-block" class="track-ctrl-btn" title="Duplicate">DUB</button>
+                        <!-- Botones de Copiar/Pegar -->
+                        <button id="btn-mem-copy" class="track-ctrl-btn text-cyan-500 border-cyan-900 hover:bg-cyan-900/20" title="Copy Pattern">CPY</button>
+                        <button id="btn-mem-paste" class="track-ctrl-btn text-cyan-500 border-cyan-900 hover:bg-cyan-900/20" title="Paste Pattern">PST</button>
+                        
+                        <div class="w-2"></div> <!-- Separador -->
+                        
                         <button id="btn-move-left" class="track-ctrl-btn" title="Move Left">&larr;</button>
                         <button id="btn-move-right" class="track-ctrl-btn" title="Move Right">&rarr;</button>
                         <div class="w-2"></div>
@@ -140,14 +145,14 @@
         </div>
     </div>
 
-    <!-- EDITOR PANEL (REDISEÑADO PARA COLAPSAR) -->
+    <!-- EDITOR PANEL -->
     <div id="editor-panel" class="panel-expanded fixed bottom-0 left-0 w-full bg-[#0a0a0a] border-t border-gray-800 flex flex-col z-40 transition-all duration-300 shadow-[0_-5px_30px_rgba(0,0,0,0.8)]">
         
-        <!-- HEADER PANEL (Siempre visible) -->
+        <!-- HEADER PANEL -->
         <div class="h-8 bg-black flex items-center justify-between px-4 border-b border-gray-800 shrink-0 cursor-pointer" id="panel-header-trigger">
             <span id="step-info-display" class="text-[10px] text-gray-500 tracking-widest">EDIT</span>
             <button id="btn-minimize-panel" class="text-xs text-green-500 hover:text-white px-2 py-1 font-bold">
-                &#9660; <!-- Flecha Abajo por defecto (Expandido) -->
+                &#9660; 
             </button>
         </div>
 
@@ -161,9 +166,9 @@
                         <button id="oct-up" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded text-gray-400 font-bold">+</button>
                     </div>
                     
-                    <!-- CONTROLES FX DINÁMICOS -->
+                    <!-- CONTROLES FX -->
                     <div class="flex-1 ml-4 relative">
-                        <!-- MODE: ANALOG (Sliders) -->
+                        <!-- MODE: ANALOG -->
                         <div id="fx-controls-analog" class="flex gap-2 w-full transition-opacity duration-300">
                             <div class="flex-1 bg-gray-900 p-1 rounded border border-gray-800 flex flex-col justify-center">
                                 <label class="text-[8px] text-gray-500 text-center block mb-1">CUT</label>
@@ -179,7 +184,7 @@
                             </div>
                         </div>
 
-                        <!-- MODE: DIGITAL (Boxes) -->
+                        <!-- MODE: DIGITAL -->
                         <div id="fx-controls-digital" class="hidden flex gap-2 w-full absolute inset-0 bg-[#0a0a0a]">
                             <div class="flex-1 bg-gray-900 p-1 rounded border border-gray-800 flex flex-col justify-center items-center">
                                 <label class="text-[8px] text-green-600 text-center block mb-1 font-bold">CUT [0-100]</label>
