@@ -2,7 +2,7 @@
 :root {
     --neon-green: #00ff41;
     --neon-purple: #bc13fe;
-    --neon-orange: #ff9d00; /* Nuevo color para selección */
+    --neon-orange: #ff9d00;
     --dark-bg: #050505;
 }
 
@@ -62,7 +62,6 @@ body {
 /* VISUALIZADOR DE SELECCIÓN NARANJA (Frame interior) */
 .step-selected-orange {
     border-color: var(--neon-orange) !important;
-    /* Inset shadow crea el marco brillante interior */
     box-shadow: inset 0 0 0 2px var(--neon-orange), inset 0 0 15px rgba(255, 157, 0, 0.4);
     z-index: 20;
 }
@@ -79,4 +78,20 @@ body {
 .panel-overlay { height: 380px; }
 
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; background: var(--neon-green); border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green); }
+
+/* DIGITAL INPUT STYLE */
+.digital-input {
+    outline: none;
+    -moz-appearance: textfield; /* Firefox */
+}
+.digital-input::-webkit-outer-spin-button,
+.digital-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.digital-input:focus {
+    border-color: var(--neon-green);
+    box-shadow: 0 0 5px rgba(0,255,65,0.5);
+}
+
 .glitch-text { position: relative; color: #fff; text-shadow: 2px 0 var(--neon-purple), -2px 0 var(--neon-green); }
