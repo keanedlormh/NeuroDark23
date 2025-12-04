@@ -12,7 +12,8 @@ const AppState = {
     activeView: 'bass-1',
     currentOctave: 3,
     distortionLevel: 20,
-    panelMode: 'docked',
+    panelCollapsed: false, // Nueva propiedad
+    followPlayback: false, // Nueva propiedad
     uiMode: 'analog', // 'analog' or 'digital'
     exportReps: 1
 };
@@ -153,7 +154,6 @@ async function renderAudio() {
                         const n = blk.tracks[tid][s];
                         if(n) {
                             const syn = offBass.find(k=>k.id===tid);
-                            // Pass slide/accent params
                             if(syn) syn.play(n.note, n.octave, t, 0.25, n.slide, n.accent);
                         }
                     });
@@ -274,8 +274,19 @@ function drawLoop() {
     while(visualQueue.length && visualQueue[0].time <= t) {
         const ev = visualQueue.shift();
         if(ev.step === 0) renderTrackBar();
+        
         if(lastDrawnStep !== ev.step) {
             updatePlayClock(ev.step);
+            
+            // --- NUEVA LÓGICA DE VISUALIZACIÓN ---
+            // Si el modo seguimiento está ON, y el bloque que suena es distinto al que vemos...
+            if(AppState.followPlayback && ev.block !== AppState.editingBlock) {
+                // ...cambiamos la vista al bloque actual automáticamente.
+                AppState.editingBlock = ev.block;
+                updateEditors();
+                renderTrackBar();
+            }
+
             if(ev.block === AppState.editingBlock) {
                 window.timeMatrix.highlightPlayingStep(ev.step);
                 if(ev.step % 4 === 0) blinkLed();
@@ -341,11 +352,8 @@ function syncControlsFromSynth(viewId) {
     const digRes = document.getElementById('res-digital');
 
     // MAPPINGS
-    // Cutoff: 100-5000 -> 0-100%
     const cutPerc = Math.round(((s.params.cutoff - 100) / 4900) * 100);
-    // Resonance: 0-20 -> 0-100% (val * 5)
     const resPerc = Math.round(s.params.resonance * 5);
-    // Distortion: 0-100 -> Direct
 
     // UPDATE UI
     if(slDist) slDist.value = s.params.distortion;
@@ -470,9 +478,37 @@ function toggleUIMode() {
         analogP.classList.remove('opacity-0', 'pointer-events-none');
         digitalP.classList.add('hidden');
     }
-    
-    // Refresh Sync
     syncControlsFromSynth(AppState.activeView);
+}
+
+function toggleVisualizerMode() {
+    AppState.followPlayback = !AppState.followPlayback;
+    const btn = document.getElementById('btn-toggle-visualizer');
+    if(AppState.followPlayback) {
+        btn.innerText = "VISUALIZER: ON";
+        btn.classList.remove('border-gray-700', 'text-gray-400');
+        btn.classList.add('border-green-500', 'text-green-400', 'bg-green-900/20');
+    } else {
+        btn.innerText = "VISUALIZER: OFF";
+        btn.classList.remove('border-green-500', 'text-green-400', 'bg-green-900/20');
+        btn.classList.add('border-gray-700', 'text-gray-400');
+    }
+}
+
+function togglePanelState() {
+    AppState.panelCollapsed = !AppState.panelCollapsed;
+    const p = document.getElementById('editor-panel');
+    const btn = document.getElementById('btn-minimize-panel');
+    
+    if(AppState.panelCollapsed) {
+        p.classList.remove('panel-expanded');
+        p.classList.add('panel-collapsed');
+        btn.innerHTML = "&#9650;"; // Flecha Arriba (Expandir)
+    } else {
+        p.classList.remove('panel-collapsed');
+        p.classList.add('panel-expanded');
+        btn.innerHTML = "&#9660;"; // Flecha Abajo (Colapsar)
+    }
 }
 
 // --- MODALS ---
@@ -487,13 +523,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('touchstart', globalUnlock);
     
     safeClick('btn-play', toggleTransport);
-    safeClick('app-logo', toggleTransport); // LOGO PLAY TRIGGER
+    safeClick('app-logo', toggleTransport); 
     
     safeClick('btn-open-menu', () => { renderSynthMenu(); toggleMenu(); });
     safeClick('btn-menu-close', toggleMenu);
     
-    // Toggle UI
+    // Toggle UI Modes
     safeClick('btn-toggle-ui-mode', toggleUIMode);
+    safeClick('btn-toggle-visualizer', toggleVisualizerMode);
+
+    // Toggle Panel
+    safeClick('btn-minimize-panel', togglePanelState);
+    safeClick('panel-header-trigger', togglePanelState);
 
     // Log
     const logPanel = document.getElementById('sys-log-panel');
@@ -528,15 +569,6 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.classList.add('active');
             AppState.exportReps = parseInt(btn.dataset.rep);
         };
-    });
-
-    safeClick('btn-dock-mode', () => {
-        const p = document.getElementById('editor-panel');
-        p.classList.toggle('panel-docked'); p.classList.toggle('panel-overlay');
-        const ph = document.getElementById('dock-placeholder');
-        const btn = document.getElementById('btn-dock-mode');
-        if(p.classList.contains('panel-docked')) { ph.appendChild(p); btn.innerHTML = "&#9633;"; } 
-        else { document.body.appendChild(p); btn.innerHTML = "_"; }
     });
     
     // Matrix Tap
@@ -604,7 +636,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(prop === 'distortion') s.setDistortion(v);
                 if(prop === 'cutoff') s.setCutoff(v);
                 if(prop === 'resonance') s.setResonance(v);
-                // Sync to Digital
                 syncControlsFromSynth(AppState.activeView);
             }
         };
@@ -618,28 +649,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const el = document.getElementById(id);
         if(el) el.onchange = (e) => {
             let val = parseInt(e.target.value);
-            // Clamp 0-100
             val = Math.max(0, Math.min(100, val));
             e.target.value = val;
 
             const s = bassSynths.find(sy => sy.id === AppState.activeView);
             if(s) {
-                if(prop === 'distortion') {
-                    // 0-100 -> Direct
-                    s.setDistortion(val);
-                }
+                if(prop === 'distortion') s.setDistortion(val);
                 if(prop === 'cutoff') {
-                    // 0-100 -> 100-5000 Hz
-                    // val/100 * 4900 + 100
                     const freq = Math.floor((val / 100) * 4900) + 100;
                     s.setCutoff(freq);
                 }
                 if(prop === 'resonance') {
-                    // 0-100 -> 0-20
                     const res = val / 5;
                     s.setResonance(res);
                 }
-                // Sync Back to Analog
                 syncControlsFromSynth(AppState.activeView);
             }
         };
