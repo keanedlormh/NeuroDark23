@@ -12,7 +12,7 @@ const AppState = {
     activeView: 'bass-1',
     currentOctave: 3,
     distortionLevel: 20,
-    panelCollapsed: false, // Control de estado del panel
+    panelCollapsed: false,
     followPlayback: false, 
     uiMode: 'analog',
     exportReps: 1
@@ -491,7 +491,7 @@ function toggleVisualizerMode() {
     }
 }
 
-// CORREGIDO: TOGGLE PANEL
+// TOGGLE PANEL
 function togglePanelState() {
     AppState.panelCollapsed = !AppState.panelCollapsed;
     const p = document.getElementById('editor-panel');
@@ -501,12 +501,12 @@ function togglePanelState() {
         // COLAPSAR
         p.classList.remove('panel-expanded');
         p.classList.add('panel-collapsed');
-        btn.innerHTML = "&#9650;"; // Flecha Arriba (Mostrar)
+        btn.innerHTML = "&#9650;"; 
     } else {
         // EXPANDIR
         p.classList.remove('panel-collapsed');
         p.classList.add('panel-expanded');
-        btn.innerHTML = "&#9660;"; // Flecha Abajo (Ocultar)
+        btn.innerHTML = "&#9660;"; 
     }
 }
 
@@ -531,7 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeClick('btn-toggle-ui-mode', toggleUIMode);
     safeClick('btn-toggle-visualizer', toggleVisualizerMode);
 
-    // Toggle Panel (Both Header and Button)
+    // Toggle Panel
     safeClick('btn-minimize-panel', (e) => { e.stopPropagation(); togglePanelState(); });
     safeClick('panel-header-trigger', togglePanelState);
 
@@ -553,7 +553,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // Track Actions
     safeClick('btn-add-block', () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length-1; updateEditors(); renderTrackBar(); });
     safeClick('btn-del-block', () => { if(confirm("Del?")) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length-1); updateEditors(); renderTrackBar(); }});
-    safeClick('btn-copy-block', () => { window.timeMatrix.duplicateBlock(AppState.editingBlock); AppState.editingBlock++; updateEditors(); renderTrackBar(); });
+    // COPY / PASTE
+    safeClick('btn-mem-copy', () => { 
+        if(window.timeMatrix.copyToClipboard(AppState.editingBlock)) {
+            window.logToScreen("PATTERN COPIED");
+        }
+    });
+    safeClick('btn-mem-paste', () => {
+        if(window.timeMatrix.pasteFromClipboard(AppState.editingBlock)) {
+            AppState.editingBlock++; // Seleccionar el nuevo bloque pegado
+            updateEditors(); 
+            renderTrackBar();
+            window.logToScreen("PATTERN PASTED");
+        } else {
+             window.logToScreen("CLIPBOARD EMPTY", 'error');
+        }
+    });
+
     safeClick('btn-move-left', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, -1)) { AppState.editingBlock--; updateEditors(); renderTrackBar(); }});
     safeClick('btn-move-right', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, 1)) { AppState.editingBlock++; updateEditors(); renderTrackBar(); }});
 
