@@ -74,8 +74,9 @@ body {
 .black-key { background: #222; color: #666; border: 1px solid #444; border-bottom: 3px solid #000; height: 85%; margin-top: 0; }
 .piano-key:active { background: var(--neon-green) !important; color: #000 !important; border-bottom-color: #004400; transform: translateY(2px); }
 
-.panel-docked { height: 240px; } 
-.panel-overlay { height: 380px; }
+/* PANEL ESTADOS */
+.panel-expanded { height: 260px; } 
+.panel-collapsed { height: 32px; } /* Solo altura del header */
 
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; background: var(--neon-green); border-radius: 50%; border: 2px solid #000; box-shadow: 0 0 8px var(--neon-green); }
 
