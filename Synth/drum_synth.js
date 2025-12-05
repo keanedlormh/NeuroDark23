@@ -1,9 +1,5 @@
-/* * DRUM SYNTH MODULE (Classic Kit Edition)
- * Synthesizes analog-style percussion.
- * * Techniques:
- * - Kick/Tom: Pitch-sweeping Sine/Triangle waves.
- * - Snare: Mixed Oscillator (body) + Filtered Noise (snares).
- * - HiHat: High-pass Filtered Noise (metallic spectrum).
+/* * DRUM SYNTH MODULE (Extended 7-Piece Kit)
+ * Synthesizes analog-style percussion with advanced envelope shaping.
  */
 
 class DrumSynth {
@@ -11,12 +7,15 @@ class DrumSynth {
         this.ctx = null;
         this.masterGain = null;
         
-        // Define the Kit
+        // Extended Kit Definition
         this.kits = [
-            { id: 'kick', name: 'KICK', color: '#ff2222' },   // Red
-            { id: 'snare', name: 'SNARE', color: '#ffdd00' }, // Yellow
-            { id: 'hat', name: 'HI-HAT', color: '#00ccff' },  // Cyan
-            { id: 'tom', name: 'LOW TOM', color: '#bd00ff' }  // Purple (Replaces Glitch)
+            { id: 'kick', name: 'KICK', color: '#ff2222' },    // Red
+            { id: 'snare', name: 'SNARE', color: '#ffdd00' },  // Yellow
+            { id: 'clap', name: 'CLAP', color: '#ff8800' },    // Orange
+            { id: 'hat', name: 'CL.HAT', color: '#00ccff' },   // Cyan (Closed)
+            { id: 'ohat', name: 'OP.HAT', color: '#0088ff' },  // Blue (Open)
+            { id: 'tom', name: 'LO TOM', color: '#bd00ff' },   // Purple
+            { id: 'htom', name: 'HI TOM', color: '#ff00bd' }   // Pink
         ];
         
         // Cache noise buffer to save CPU
@@ -47,10 +46,16 @@ class DrumSynth {
         switch (type) {
             case 'kick': this.playKick(time); break;
             case 'snare': this.playSnare(time); break;
-            case 'hat': this.playHiHat(time); break;
-            case 'tom': this.playTom(time); break;
-            // Legacy support if 'perc' ID remains in old patterns
-            case 'perc': this.playTom(time); break; 
+            case 'clap': this.playClap(time); break;
+            case 'hat': this.playHiHat(time, false); break; // Closed
+            case 'ohat': this.playHiHat(time, true); break; // Open
+            case 'tom': this.playTom(time, 150); break;     // Low Pitch
+            case 'htom': this.playTom(time, 300); break;    // High Pitch
+            
+            // Legacy/Fallback mapping
+            case 'perc': this.playTom(time, 300); break; 
+            case 'chat': this.playHiHat(time, false); break;
+            case 'ltom': this.playTom(time, 150); break;
         }
     }
 
@@ -58,7 +63,7 @@ class DrumSynth {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
 
-        // Punchier Kick
+        // Punchier Kick Envelope
         osc.frequency.setValueAtTime(150, time);
         osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.5);
 
@@ -73,10 +78,10 @@ class DrumSynth {
     }
 
     playSnare(time) {
-        // 1. Body (Tone)
+        // 1. Tone (Body)
         const osc = this.ctx.createOscillator();
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(180, time); // Slightly lower fundamental
+        osc.frequency.setValueAtTime(180, time);
         const oscGain = this.ctx.createGain();
         oscGain.gain.setValueAtTime(0.4, time);
         oscGain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
@@ -85,17 +90,17 @@ class DrumSynth {
         osc.start(time);
         osc.stop(time + 0.2);
 
-        // 2. Snares (Noise)
+        // 2. Noise (Snares)
         const noise = this.ctx.createBufferSource();
         noise.buffer = this.noiseBuffer;
         
         const noiseFilter = this.ctx.createBiquadFilter();
         noiseFilter.type = 'highpass';
-        noiseFilter.frequency.setValueAtTime(2000, time); // Cleaner snap
+        noiseFilter.frequency.setValueAtTime(2000, time);
 
         const noiseGain = this.ctx.createGain();
         noiseGain.gain.setValueAtTime(0.6, time);
-        noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.25); // Snappier decay
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, time + 0.25);
 
         noise.connect(noiseFilter);
         noiseFilter.connect(noiseGain);
@@ -105,26 +110,63 @@ class DrumSynth {
         noise.stop(time + 0.3);
     }
 
-    playHiHat(time) {
-        // Classic Analog Closed Hat (Filtered Noise)
+    playClap(time) {
+        // Synthesized Hand Clap: Filtered noise with a "sawtooth" multi-pulse envelope
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.value = 1200; // Clap "crack" frequency
+        filter.Q.value = 1;
+
+        const gain = this.ctx.createGain();
+        
+        // Multi-pulse envelope simulation (Reverb-like effect)
+        // Pulse 1
+        gain.gain.setValueAtTime(0, time);
+        gain.gain.linearRampToValueAtTime(0.5, time + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.1, time + 0.02);
+        
+        // Pulse 2
+        gain.gain.setValueAtTime(0.5, time + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.1, time + 0.04);
+        
+        // Pulse 3 (Main Decay)
+        gain.gain.setValueAtTime(0.8, time + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+
+        noise.start(time);
+        noise.stop(time + 0.25);
+    }
+
+    playHiHat(time, isOpen) {
         const source = this.ctx.createBufferSource();
         source.buffer = this.noiseBuffer;
 
-        // Bandpass to focus the metallic "chick" sound
+        // Bandpass for metallic character
         const bandpass = this.ctx.createBiquadFilter();
         bandpass.type = 'bandpass';
         bandpass.frequency.value = 10000;
         bandpass.Q.value = 1;
 
-        // Highpass to remove any low rumble
+        // Highpass to clean up mud
         const highpass = this.ctx.createBiquadFilter();
         highpass.type = 'highpass';
         highpass.frequency.value = 7000;
 
         const gain = this.ctx.createGain();
-        // Very sharp attack and decay
-        gain.gain.setValueAtTime(0.6, time); 
-        gain.gain.exponentialRampToValueAtTime(0.01, time + 0.08); // Short & crisp
+        
+        // Envelope depends on Open/Closed state
+        const decay = isOpen ? 0.4 : 0.06; // Open is longer
+        const volume = isOpen ? 0.5 : 0.6; // Open is slightly quieter to mix better
+
+        gain.gain.setValueAtTime(volume, time); 
+        gain.gain.exponentialRampToValueAtTime(0.01, time + decay);
 
         source.connect(bandpass);
         bandpass.connect(highpass);
@@ -132,17 +174,16 @@ class DrumSynth {
         gain.connect(this.masterGain);
 
         source.start(time);
-        source.stop(time + 0.1);
+        source.stop(time + decay + 0.1);
     }
 
-    playTom(time) {
-        // Classic Low/Mid Tom
+    playTom(time, startFreq) {
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
 
-        // Pitch Sweep: Starts mid-low, drops low
-        osc.frequency.setValueAtTime(200, time); 
-        osc.frequency.exponentialRampToValueAtTime(60, time + 0.4);
+        // Pitch Sweep
+        osc.frequency.setValueAtTime(startFreq, time); 
+        osc.frequency.exponentialRampToValueAtTime(startFreq * 0.3, time + 0.4);
 
         // Amplitude Envelope
         gain.gain.setValueAtTime(0.8, time);
