@@ -138,6 +138,7 @@ async function renderAudio() {
             s.setDistortion(ls.params.distortion);
             s.setCutoff(ls.params.cutoff);
             s.setResonance(ls.params.resonance);
+            s.setWaveform(ls.params.waveform); // Sincronizar waveform en exportación
             offBass.push(s);
         });
         const offDrum = new DrumSynth();
@@ -336,6 +337,17 @@ function setTab(v) {
 // --- NEW UI SYNC ---
 function syncControlsFromSynth(viewId) {
     const s = bassSynths.find(sy => sy.id === viewId);
+    
+    // Waveform Btn Sync
+    const wvBtn = document.getElementById('btn-waveform');
+    if(wvBtn && s) {
+        if(s.params.waveform === 'square') {
+            wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-1">Π</span><span>SQR</span>';
+        } else {
+            wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-1">~</span><span>SAW</span>';
+        }
+    }
+
     if(!s) return;
     
     // ANALOG DOM
@@ -510,6 +522,15 @@ function togglePanelState() {
     }
 }
 
+function toggleWaveform() {
+    const s = bassSynths.find(sy => sy.id === AppState.activeView);
+    if(s) {
+        const next = s.params.waveform === 'sawtooth' ? 'square' : 'sawtooth';
+        s.setWaveform(next);
+        syncControlsFromSynth(AppState.activeView);
+    }
+}
+
 // --- MODALS ---
 function toggleMenu() { const m=document.getElementById('main-menu'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
 function toggleExportModal() { const m=document.getElementById('export-modal'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
@@ -534,6 +555,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Toggle Panel
     safeClick('btn-minimize-panel', (e) => { e.stopPropagation(); togglePanelState(); });
     safeClick('panel-header-trigger', togglePanelState);
+
+    // WAVEFORM TOGGLE
+    safeClick('btn-waveform', toggleWaveform);
 
     // Log
     const logPanel = document.getElementById('sys-log-panel');
