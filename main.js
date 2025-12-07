@@ -1,5 +1,5 @@
 /*
- * NEURODARK 23 - NATIVE CORE v22 (Filters)
+ * NEURODARK 23 - NATIVE CORE v27 (Restored & Fixed)
  */
 
 const AppState = {
@@ -11,9 +11,6 @@ const AppState = {
     selectedStep: 0,
     activeView: 'bass-1',
     currentOctave: 3,
-    distortionLevel: 20,
-    panelCollapsed: false,
-    followPlayback: false, 
     uiMode: 'analog',
     exportReps: 1
 };
@@ -30,11 +27,36 @@ let visualQueue = [];
 let drawFrameId = null;
 let lastDrawnStep = -1;
 
-// --- UTILS ---
+// --- GLOBAL UTILS ---
+window.toggleMenu = function() {
+    const m = document.getElementById('main-menu');
+    if(m) { m.classList.toggle('hidden'); m.classList.toggle('flex'); }
+};
+
+window.toggleExportModal = function() {
+    const m = document.getElementById('export-modal');
+    if(m) { m.classList.toggle('hidden'); m.classList.toggle('flex'); }
+};
+
+window.removeBassSynth = function(id) {
+    if(bassSynths.length <= 1) {
+        window.logToScreen("Cannot remove last synth", 'warn');
+        return;
+    }
+    const idx = bassSynths.findIndex(s => s.id === id);
+    if(idx > -1) {
+        bassSynths.splice(idx, 1);
+        if(window.timeMatrix) window.timeMatrix.removeTrack(id);
+        renderSynthMenu();
+        renderInstrumentTabs();
+        if(AppState.activeView === id) setTab(bassSynths[0].id);
+        window.logToScreen(`Removed ${id}`);
+    }
+};
+
 function safeClick(id, fn) {
     const el = document.getElementById(id);
     if(el) el.onclick = fn;
-    else console.warn(`Button ID not found: ${id}`);
 }
 
 // --- BOOTSTRAP ---
@@ -50,13 +72,19 @@ function bootstrap() {
             if(window.timeMatrix.registerTrack) window.timeMatrix.registerTrack('bass-1');
         }
 
-        renderInstrumentTabs();
+        renderInstrumentTabs(); 
         renderTrackBar();
         updateEditors();
-        initPlayClock();
+        initPlayClock(); // Esta función ahora existe (ver abajo)
+        setupDigitalRepeaters();
         
+        // Initial Sync
+        syncControlsFromSynth('bass-1');
+        
+        window.logToScreen("Engine Ready [OK]");
     } catch(e) {
         window.logToScreen("BOOT ERR: " + e, 'error');
+        console.error(e);
     }
 }
 
@@ -70,8 +98,14 @@ function initEngine() {
             masterGain = audioCtx.createGain();
             masterGain.gain.value = 0.6;
             
+            // Master Compressor / Limiter
             const comp = audioCtx.createDynamicsCompressor();
             comp.threshold.value = -3;
+            comp.knee.value = 30;
+            comp.ratio.value = 12;
+            comp.attack.value = 0.003;
+            comp.release.value = 0.25;
+            
             masterGain.connect(comp);
             comp.connect(audioCtx.destination);
 
@@ -110,103 +144,7 @@ function addBassSynth() {
     window.logToScreen(`+Synth: ${id}`);
 }
 
-// --- EXPORT ---
-async function renderAudio() {
-    if(AppState.isPlaying) toggleTransport();
-    window.logToScreen("Rendering WAV...");
-    const btn = document.getElementById('btn-start-render');
-    if(btn) { btn.innerText = "WAIT..."; btn.disabled = true; }
-
-    try {
-        const stepsPerBlock = window.timeMatrix.totalSteps;
-        const totalBlocks = window.timeMatrix.blocks.length;
-        const secPerStep = (60.0 / AppState.bpm) / 4;
-        const totalSteps = stepsPerBlock * totalBlocks * AppState.exportReps;
-        const duration = totalSteps * secPerStep + 2.0;
-
-        const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-        const offCtx = new OfflineCtx(2, 44100 * duration, 44100);
-        
-        const offMaster = offCtx.createGain();
-        offMaster.gain.value = 0.6;
-        offMaster.connect(offCtx.destination);
-
-        const offBass = [];
-        bassSynths.forEach(ls => {
-            const s = new window.BassSynth(ls.id);
-            s.init(offCtx, offMaster);
-            s.setDistortion(ls.params.distortion);
-            s.setCutoff(ls.params.cutoff);
-            s.setResonance(ls.params.resonance);
-            s.setWaveform(ls.params.waveform); // Sincronizar waveform en exportación
-            offBass.push(s);
-        });
-        const offDrum = new DrumSynth();
-        offDrum.init(offCtx, offMaster);
-
-        let t = 0.0;
-        for(let r=0; r<AppState.exportReps; r++) {
-            for(let b=0; b<totalBlocks; b++) {
-                const blk = window.timeMatrix.blocks[b];
-                for(let s=0; s<stepsPerBlock; s++) {
-                    if(blk.drums[s]) blk.drums[s].forEach(id=>offDrum.play(id, t));
-                    if(blk.tracks) Object.keys(blk.tracks).forEach(tid => {
-                        const n = blk.tracks[tid][s];
-                        if(n) {
-                            const syn = offBass.find(k=>k.id===tid);
-                            if(syn) syn.play(n.note, n.octave, t, 0.25, n.slide, n.accent);
-                        }
-                    });
-                    t += secPerStep;
-                }
-            }
-        }
-
-        const buf = await offCtx.startRendering();
-        const wav = bufferToWave(buf, buf.length);
-        const url = URL.createObjectURL(wav);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `ND23_Render_${Date.now()}.wav`;
-        a.click();
-        window.logToScreen("Download Ready!");
-        toggleExportModal();
-
-    } catch(e) { window.logToScreen("Render Err: "+e, 'error'); }
-    finally { if(btn) { btn.innerText = "RENDER"; btn.disabled = false; } }
-}
-
-function bufferToWave(abuffer, len) {
-    let numOfChan = abuffer.numberOfChannels,
-        length = len * numOfChan * 2 + 44,
-        buffer = new ArrayBuffer(length),
-        view = new DataView(buffer),
-        channels = [], i, sample,
-        offset = 0, pos = 0;
-
-    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
-
-    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
-    setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-    setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
-    setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
-    setUint32(length - pos - 4);
-
-    for(i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
-
-    while(pos < length) {
-        for(i = 0; i < numOfChan; i++) {
-            sample = Math.max(-1, Math.min(1, channels[i][offset])); 
-            sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; 
-            view.setInt16(pos, sample, true); pos += 2;
-        }
-        offset++;
-    }
-    return new Blob([buffer], {type: "audio/wav"});
-}
-
-// --- CLOCK ---
+// --- CLOCK & SEQUENCER (RESTORED) ---
 function initPlayClock() {
     const svg = document.getElementById('play-clock-svg');
     if(!svg) return;
@@ -236,7 +174,6 @@ function updatePlayClock(step) {
     }
 }
 
-// --- SCHEDULER ---
 function nextNote() {
     const secPerBeat = 60.0 / AppState.bpm;
     const secPerStep = secPerBeat / 4;
@@ -274,17 +211,13 @@ function drawLoop() {
     while(visualQueue.length && visualQueue[0].time <= t) {
         const ev = visualQueue.shift();
         if(ev.step === 0) renderTrackBar();
-        
         if(lastDrawnStep !== ev.step) {
             updatePlayClock(ev.step);
-            
-            // --- NUEVA LÓGICA DE VISUALIZACIÓN ---
             if(AppState.followPlayback && ev.block !== AppState.editingBlock) {
                 AppState.editingBlock = ev.block;
                 updateEditors();
                 renderTrackBar();
             }
-
             if(ev.block === AppState.editingBlock) {
                 window.timeMatrix.highlightPlayingStep(ev.step);
                 if(ev.step % 4 === 0) blinkLed();
@@ -306,7 +239,230 @@ function blinkLed() {
     }
 }
 
-// --- UI ---
+function toggleTransport() { 
+    initEngine(); 
+    AppState.isPlaying = !AppState.isPlaying; 
+    const btn = document.getElementById('btn-play'); 
+    if(AppState.isPlaying) { 
+        btn.innerHTML = "&#10074;&#10074;"; 
+        btn.classList.add('border-green-500', 'text-green-500'); 
+        AppState.currentPlayStep = 0; 
+        AppState.currentPlayBlock = AppState.editingBlock; 
+        nextNoteTime = audioCtx.currentTime + 0.1; 
+        visualQueue = []; 
+        if(clockWorker) clockWorker.postMessage("start"); 
+        drawLoop(); 
+        window.logToScreen("PLAY"); 
+    } else { 
+        btn.innerHTML = "&#9658;"; 
+        btn.classList.remove('border-green-500', 'text-green-500'); 
+        if(clockWorker) clockWorker.postMessage("stop"); 
+        cancelAnimationFrame(drawFrameId); 
+        window.timeMatrix.highlightPlayingStep(-1); 
+        updatePlayClock(-1); 
+        renderTrackBar(); 
+        window.logToScreen("STOP"); 
+    } 
+}
+
+// --- SYNC & CONTROL MAPPING ---
+
+function updateSynthParam(param, value) {
+    const s = bassSynths.find(sy => sy.id === AppState.activeView);
+    if(!s) return;
+
+    let finalValue = value;
+
+    if (param === 'cutoff') {
+        const minHz = 100;
+        const maxHz = 5000;
+        const clamped = Math.max(minHz, Math.min(maxHz, value));
+        finalValue = ((clamped - minHz) / (maxHz - minHz)) * 100;
+    }
+    
+    if(param === 'distortion') s.setDistortion(finalValue);
+    if(param === 'cutoff') s.setCutoff(finalValue);
+    if(param === 'resonance') s.setResonance(finalValue);
+    if(param === 'envMod') s.setEnvMod(finalValue);
+    if(param === 'decay') s.setDecay(finalValue);
+
+    syncControlsFromSynth(AppState.activeView);
+}
+
+function syncControlsFromSynth(viewId) {
+    const s = bassSynths.find(sy => sy.id === viewId);
+    if(!s) return;
+
+    const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if(el) el.value = Math.round(val);
+    };
+
+    const p = s.params;
+
+    // Analog
+    setVal('dist-slider', p.distortion);
+    setVal('res-slider', p.resonance);
+    setVal('env-slider', p.envMod);
+    setVal('dec-slider', p.decay);
+    
+    const cutoffHz = ((p.cutoff / 100) * 4900) + 100;
+    setVal('cutoff-slider', cutoffHz);
+
+    // Digital
+    setVal('dist-digital', p.distortion);
+    setVal('cutoff-digital', p.cutoff);
+    setVal('res-digital', p.resonance * 5); 
+    setVal('env-digital', p.envMod);
+    setVal('dec-digital', p.decay);
+
+    const wvBtn = document.getElementById('btn-waveform');
+    if(wvBtn) {
+        if(p.waveform === 'square') wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-0.5">Π</span><span>SQR</span>';
+        else wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-0.5">~</span><span>SAW</span>';
+    }
+}
+
+// --- EVENT LISTENERS ---
+document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('click', globalUnlock);
+    document.addEventListener('touchstart', globalUnlock);
+    
+    safeClick('btn-play', toggleTransport);
+    safeClick('app-logo', toggleTransport); 
+    safeClick('btn-open-menu', () => { renderSynthMenu(); window.toggleMenu(); });
+    safeClick('btn-menu-close', window.toggleMenu);
+    
+    safeClick('btn-toggle-ui-mode', toggleUIMode);
+    safeClick('btn-toggle-visualizer', toggleVisualizerMode);
+    safeClick('btn-minimize-panel', (e) => { e.stopPropagation(); togglePanelState(); });
+    safeClick('panel-header-trigger', togglePanelState);
+
+    const logPanel = document.getElementById('sys-log-panel');
+    const logBtn = document.getElementById('btn-toggle-log-internal');
+    if(logBtn) logBtn.onclick = () => {
+        logPanel.classList.toggle('-translate-y-full');
+        logPanel.classList.toggle('translate-y-0');
+        logBtn.innerText = logPanel.classList.contains('translate-y-0') ? "[HIDE]" : "[SHOW]";
+    };
+    safeClick('btn-toggle-log-menu', () => { 
+        if(logPanel.classList.contains('-translate-y-full')) logBtn.click();
+        window.toggleMenu(); 
+    });
+
+    safeClick('btn-waveform', toggleWaveform);
+
+    const bindSlider = (id, param) => {
+        const el = document.getElementById(id);
+        if(el) el.oninput = (e) => updateSynthParam(param, parseInt(e.target.value));
+    };
+    bindSlider('dist-slider', 'distortion');
+    bindSlider('cutoff-slider', 'cutoff'); 
+    bindSlider('res-slider', 'resonance');
+    bindSlider('env-slider', 'envMod');
+    bindSlider('dec-slider', 'decay');
+
+    const bindDigitalInput = (id, param) => {
+        const el = document.getElementById(id);
+        if(el) {
+            el.onchange = (e) => {
+                let val = parseInt(e.target.value);
+                if(isNaN(val)) val = 0;
+                val = Math.max(0, Math.min(100, val)); 
+                
+                if (param === 'resonance') {
+                    const s = bassSynths.find(sy => sy.id === AppState.activeView);
+                    if(s) s.setResonance(val / 5);
+                    syncControlsFromSynth(AppState.activeView);
+                }
+                else if (param === 'cutoff') {
+                    const s = bassSynths.find(sy => sy.id === AppState.activeView);
+                    if(s) s.setCutoff(val);
+                    syncControlsFromSynth(AppState.activeView);
+                } 
+                else {
+                    const s = bassSynths.find(sy => sy.id === AppState.activeView);
+                    if (param === 'distortion') s.setDistortion(val);
+                    if (param === 'envMod') s.setEnvMod(val);
+                    if (param === 'decay') s.setDecay(val);
+                    syncControlsFromSynth(AppState.activeView);
+                }
+            };
+        }
+    };
+    bindDigitalInput('dist-digital', 'distortion');
+    bindDigitalInput('cutoff-digital', 'cutoff');
+    bindDigitalInput('res-digital', 'resonance');
+    bindDigitalInput('env-digital', 'envMod');
+    bindDigitalInput('dec-digital', 'decay');
+
+    window.addEventListener('stepSelect', (e) => { AppState.selectedStep = e.detail.index; updateEditors(); });
+    
+    document.querySelectorAll('.piano-key').forEach(k => {
+        k.onclick = () => {
+            initEngine();
+            const note = k.dataset.note;
+            const s = bassSynths.find(sy => sy.id === AppState.activeView);
+            if(!s) return;
+            const b = window.timeMatrix.blocks[AppState.editingBlock];
+            if(!b.tracks[s.id]) window.timeMatrix.registerTrack(s.id);
+            const prev = b.tracks[s.id][AppState.selectedStep];
+            b.tracks[s.id][AppState.selectedStep] = { 
+                note, octave: AppState.currentOctave, 
+                slide: prev ? prev.slide : false, 
+                accent: prev ? prev.accent : false 
+            };
+            s.play(note, AppState.currentOctave, audioCtx.currentTime);
+            updateEditors();
+        };
+    });
+
+    safeClick('btn-delete-note', () => { 
+        const s = bassSynths.find(sy => sy.id === AppState.activeView); 
+        if(s) { window.timeMatrix.blocks[AppState.editingBlock].tracks[s.id][AppState.selectedStep] = null; updateEditors(); }
+    });
+
+    const toggleNoteMod = (prop) => {
+        if(AppState.activeView === 'drum') return;
+        const b = window.timeMatrix.blocks[AppState.editingBlock];
+        const track = b.tracks[AppState.activeView];
+        if(!track) return;
+        const note = track[AppState.selectedStep];
+        if(note) { note[prop] = !note[prop]; updateEditors(); }
+    };
+    safeClick('btn-toggle-slide', () => toggleNoteMod('slide'));
+    safeClick('btn-toggle-accent', () => toggleNoteMod('accent'));
+
+    const bpm = document.getElementById('bpm-input'); if(bpm) bpm.onchange = (e) => AppState.bpm = e.target.value;
+    const octD = document.getElementById('oct-display');
+    safeClick('oct-up', () => { if(AppState.currentOctave<6) AppState.currentOctave++; octD.innerText=AppState.currentOctave; });
+    safeClick('oct-down', () => { if(AppState.currentOctave>1) AppState.currentOctave--; octD.innerText=AppState.currentOctave; });
+
+    safeClick('btn-add-synth', addBassSynth);
+    safeClick('btn-menu-panic', () => location.reload());
+    safeClick('btn-menu-clear', () => { if(confirm("Clear?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); window.toggleMenu(); }});
+    safeClick('btn-add-block', () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length-1; updateEditors(); renderTrackBar(); });
+    safeClick('btn-del-block', () => { if(confirm("Del?")) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length-1); updateEditors(); renderTrackBar(); }});
+    safeClick('btn-mem-copy', () => { if(window.timeMatrix.copyToClipboard(AppState.editingBlock)) window.logToScreen("PATTERN COPIED"); });
+    safeClick('btn-mem-paste', () => { if(window.timeMatrix.pasteFromClipboard(AppState.editingBlock)) { AppState.editingBlock++; updateEditors(); renderTrackBar(); window.logToScreen("PATTERN PASTED"); }});
+    safeClick('btn-move-left', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, -1)) { AppState.editingBlock--; updateEditors(); renderTrackBar(); }});
+    safeClick('btn-move-right', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, 1)) { AppState.editingBlock++; updateEditors(); renderTrackBar(); }});
+    
+    safeClick('btn-open-export', () => { window.toggleMenu(); window.toggleExportModal(); });
+    safeClick('btn-close-export', window.toggleExportModal);
+    safeClick('btn-start-render', renderAudio);
+    document.querySelectorAll('.export-rep-btn').forEach(btn => {
+        btn.onclick = () => {
+            document.querySelectorAll('.export-rep-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            AppState.exportReps = parseInt(btn.dataset.rep);
+        };
+    });
+
+    bootstrap();
+});
+
+// --- RENDERERS ---
 function renderInstrumentTabs() {
     const c = document.getElementById('instrument-tabs-container');
     if(!c) return;
@@ -334,192 +490,55 @@ function setTab(v) {
     syncControlsFromSynth(v);
 }
 
-// --- NEW UI SYNC ---
-function syncControlsFromSynth(viewId) {
-    const s = bassSynths.find(sy => sy.id === viewId);
-    
-    // Waveform Btn Sync
-    const wvBtn = document.getElementById('btn-waveform');
-    if(wvBtn && s) {
-        if(s.params.waveform === 'square') {
-            wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-1">Π</span><span>SQR</span>';
-        } else {
-            wvBtn.innerHTML = '<span class="text-xl font-bold leading-none mb-1">~</span><span>SAW</span>';
-        }
-    }
+function setupDigitalRepeaters() {
+    const buttons = document.querySelectorAll('.dfx-btn');
+    if(!buttons.length) return;
+    buttons.forEach(btn => {
+        let intervalId = null;
+        let timeoutId = null;
+        const target = btn.dataset.target; 
+        const dir = parseInt(btn.dataset.dir); 
 
-    if(!s) return;
-    
-    // ANALOG DOM
-    const slDist = document.getElementById('dist-slider');
-    const slCut = document.getElementById('cutoff-slider');
-    const slRes = document.getElementById('res-slider');
+        const changeVal = () => {
+            const s = bassSynths.find(sy => sy.id === AppState.activeView);
+            if(!s) return;
+            
+            let current = 0;
+            if(target === 'distortion') current = s.params.distortion;
+            else if(target === 'envMod') current = s.params.envMod;
+            else if(target === 'decay') current = s.params.decay;
+            else if(target === 'resonance') current = s.params.resonance * 5; 
+            else if(target === 'cutoff') current = s.params.cutoff; 
 
-    // DIGITAL DOM
-    const digDist = document.getElementById('dist-digital');
-    const digCut = document.getElementById('cutoff-digital');
-    const digRes = document.getElementById('res-digital');
+            let next = Math.max(0, Math.min(100, current + dir));
+            
+            if(target === 'distortion') s.setDistortion(next);
+            else if(target === 'envMod') s.setEnvMod(next);
+            else if(target === 'decay') s.setDecay(next);
+            else if(target === 'resonance') s.setResonance(next / 5);
+            else if(target === 'cutoff') s.setCutoff(next);
+            
+            syncControlsFromSynth(AppState.activeView);
+        };
 
-    // MAPPINGS
-    const cutPerc = Math.round(((s.params.cutoff - 100) / 4900) * 100);
-    const resPerc = Math.round(s.params.resonance * 5);
+        const startRepeat = () => {
+            changeVal(); 
+            timeoutId = setTimeout(() => {
+                intervalId = setInterval(changeVal, 100); 
+            }, 400); 
+        };
 
-    // UPDATE UI
-    if(slDist) slDist.value = s.params.distortion;
-    if(slCut) slCut.value = s.params.cutoff;
-    if(slRes) slRes.value = s.params.resonance;
+        const stopRepeat = () => {
+            clearTimeout(timeoutId);
+            clearInterval(intervalId);
+        };
 
-    if(digDist) digDist.value = s.params.distortion;
-    if(digCut) digCut.value = Math.max(0, Math.min(100, cutPerc));
-    if(digRes) digRes.value = Math.max(0, Math.min(100, resPerc));
-}
-
-function renderTrackBar() {
-    const c = document.getElementById('track-bar');
-    if(!c) return;
-    c.innerHTML = '';
-    const blocks = window.timeMatrix.blocks;
-    document.getElementById('display-total-blocks').innerText = blocks.length;
-    document.getElementById('display-current-block').innerText = AppState.editingBlock + 1;
-    blocks.forEach((_, i) => {
-        const el = document.createElement('div');
-        el.className = `track-block ${i===AppState.editingBlock ? 'track-block-editing' : ''} ${AppState.isPlaying && i===AppState.currentPlayBlock ? 'track-block-playing' : ''}`;
-        el.innerText = i + 1;
-        el.onclick = () => { AppState.editingBlock = i; updateEditors(); renderTrackBar(); };
-        c.appendChild(el);
+        btn.addEventListener('mousedown', startRepeat);
+        btn.addEventListener('mouseup', stopRepeat);
+        btn.addEventListener('mouseleave', stopRepeat);
+        btn.addEventListener('touchstart', (e) => { e.preventDefault(); startRepeat(); });
+        btn.addEventListener('touchend', stopRepeat);
     });
-}
-
-function updateEditors() {
-    const bEd = document.getElementById('editor-bass');
-    const dEd = document.getElementById('editor-drum');
-    const info = document.getElementById('step-info-display');
-    if(info) info.innerText = `STEP ${AppState.selectedStep+1} // ${AppState.activeView.toUpperCase()}`;
-    if(AppState.activeView === 'drum') { bEd.classList.add('hidden'); dEd.classList.remove('hidden'); renderDrumRows(); }
-    else { bEd.classList.remove('hidden'); dEd.classList.add('hidden'); }
-    
-    // UPDATE BUTTON STATES (Slide/Accent)
-    const slideBtn = document.getElementById('btn-toggle-slide');
-    const accBtn = document.getElementById('btn-toggle-accent');
-    
-    if(slideBtn) slideBtn.classList.remove('text-green-400', 'border-green-600');
-    if(accBtn) accBtn.classList.remove('text-green-400', 'border-green-600');
-
-    if(AppState.activeView !== 'drum') {
-         const blk = window.timeMatrix.blocks[AppState.editingBlock];
-         const noteData = blk.tracks[AppState.activeView] ? blk.tracks[AppState.activeView][AppState.selectedStep] : null;
-         
-         if(noteData) {
-             if(noteData.slide && slideBtn) slideBtn.classList.add('text-green-400', 'border-green-600');
-             if(noteData.accent && accBtn) accBtn.classList.add('text-green-400', 'border-green-600');
-         }
-    }
-
-    window.timeMatrix.selectedStep = AppState.selectedStep;
-    window.timeMatrix.render(AppState.activeView, AppState.editingBlock);
-}
-
-function renderDrumRows() {
-    const c = document.getElementById('editor-drum');
-    if(!c) return;
-    c.innerHTML = '';
-    const blk = window.timeMatrix.blocks[AppState.editingBlock];
-    const cur = blk.drums[AppState.selectedStep];
-    const kits = (window.drumSynth && window.drumSynth.kits) ? window.drumSynth.kits : [];
-    kits.forEach(k => {
-        const act = cur.includes(k.id);
-        const b = document.createElement('button');
-        b.className = `w-full py-2 px-3 mb-1 border flex justify-between items-center text-[10px] ${act ? 'bg-gray-900 border-green-700 text-green-400' : 'bg-transparent border-gray-800 text-gray-500'}`;
-        b.innerHTML = `<span>${k.name}</span><div class="w-2 h-2 rounded-full" style="background:${k.color}"></div>`;
-        b.onclick = () => { initEngine(); if(act) cur.splice(cur.indexOf(k.id), 1); else { cur.push(k.id); window.drumSynth.play(k.id, audioCtx.currentTime); } updateEditors(); };
-        c.appendChild(b);
-    });
-}
-
-function renderSynthMenu() {
-    const c = document.getElementById('synth-list-container');
-    if(!c) return;
-    c.innerHTML = '';
-    bassSynths.forEach(s => {
-        const r = document.createElement('div');
-        r.className = 'flex justify-between bg-black p-2 border border-gray-800 text-xs';
-        r.innerHTML = `<span class="text-green-500">${s.id}</span><button class="text-red-500" onclick="removeBassSynth('${s.id}')">X</button>`;
-        c.appendChild(r);
-    });
-}
-
-function toggleTransport() {
-    initEngine();
-    AppState.isPlaying = !AppState.isPlaying;
-    const btn = document.getElementById('btn-play');
-    if(AppState.isPlaying) {
-        btn.innerHTML = "&#10074;&#10074;";
-        btn.classList.add('border-green-500', 'text-green-500');
-        AppState.currentPlayStep = 0; AppState.currentPlayBlock = AppState.editingBlock;
-        nextNoteTime = audioCtx.currentTime + 0.1; visualQueue = [];
-        if(clockWorker) clockWorker.postMessage("start");
-        drawLoop();
-        window.logToScreen("PLAY");
-    } else {
-        btn.innerHTML = "&#9658;";
-        btn.classList.remove('border-green-500', 'text-green-500');
-        if(clockWorker) clockWorker.postMessage("stop");
-        cancelAnimationFrame(drawFrameId); window.timeMatrix.highlightPlayingStep(-1); updatePlayClock(-1);
-        renderTrackBar(); window.logToScreen("STOP");
-    }
-}
-
-function toggleUIMode() {
-    AppState.uiMode = AppState.uiMode === 'analog' ? 'digital' : 'analog';
-    const btn = document.getElementById('btn-toggle-ui-mode');
-    const analogP = document.getElementById('fx-controls-analog');
-    const digitalP = document.getElementById('fx-controls-digital');
-    
-    if(AppState.uiMode === 'digital') {
-        btn.innerText = "UI MODE: DIGITAL";
-        btn.classList.add('border-green-500', 'text-green-300');
-        analogP.classList.add('opacity-0', 'pointer-events-none');
-        digitalP.classList.remove('hidden');
-    } else {
-        btn.innerText = "UI MODE: ANALOG";
-        btn.classList.remove('border-green-500', 'text-green-300');
-        analogP.classList.remove('opacity-0', 'pointer-events-none');
-        digitalP.classList.add('hidden');
-    }
-    syncControlsFromSynth(AppState.activeView);
-}
-
-function toggleVisualizerMode() {
-    AppState.followPlayback = !AppState.followPlayback;
-    const btn = document.getElementById('btn-toggle-visualizer');
-    if(AppState.followPlayback) {
-        btn.innerText = "VISUALIZER: ON";
-        btn.classList.remove('border-gray-700', 'text-gray-400');
-        btn.classList.add('border-green-500', 'text-green-400', 'bg-green-900/20');
-    } else {
-        btn.innerText = "VISUALIZER: OFF";
-        btn.classList.remove('border-green-500', 'text-green-400', 'bg-green-900/20');
-        btn.classList.add('border-gray-700', 'text-gray-400');
-    }
-}
-
-// TOGGLE PANEL
-function togglePanelState() {
-    AppState.panelCollapsed = !AppState.panelCollapsed;
-    const p = document.getElementById('editor-panel');
-    const btn = document.getElementById('btn-minimize-panel');
-    
-    if(AppState.panelCollapsed) {
-        // COLAPSAR
-        p.classList.remove('panel-expanded');
-        p.classList.add('panel-collapsed');
-        btn.innerHTML = "&#9650;"; 
-    } else {
-        // EXPANDIR
-        p.classList.remove('panel-collapsed');
-        p.classList.add('panel-expanded');
-        btn.innerHTML = "&#9660;"; 
-    }
 }
 
 function toggleWaveform() {
@@ -531,182 +550,128 @@ function toggleWaveform() {
     }
 }
 
-// --- MODALS ---
-function toggleMenu() { const m=document.getElementById('main-menu'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
-function toggleExportModal() { const m=document.getElementById('export-modal'); m.classList.toggle('hidden'); m.classList.toggle('flex'); }
+function renderTrackBar() { const c = document.getElementById('track-bar'); if(!c) return; c.innerHTML = ''; const blocks = window.timeMatrix.blocks; document.getElementById('display-total-blocks').innerText = blocks.length; document.getElementById('display-current-block').innerText = AppState.editingBlock + 1; blocks.forEach((_, i) => { const el = document.createElement('div'); el.className = `track-block ${i===AppState.editingBlock ? 'track-block-editing' : ''} ${AppState.isPlaying && i===AppState.currentPlayBlock ? 'track-block-playing' : ''}`; el.innerText = i + 1; el.onclick = () => { AppState.editingBlock = i; updateEditors(); renderTrackBar(); }; c.appendChild(el); }); }
+function updateEditors() { const bEd = document.getElementById('editor-bass'); const dEd = document.getElementById('editor-drum'); const info = document.getElementById('step-info-display'); if(info) info.innerText = `STEP ${AppState.selectedStep+1} // ${AppState.activeView.toUpperCase()}`; if(AppState.activeView === 'drum') { bEd.classList.add('hidden'); dEd.classList.remove('hidden'); renderDrumRows(); } else { bEd.classList.remove('hidden'); dEd.classList.add('hidden'); } const slideBtn = document.getElementById('btn-toggle-slide'); const accBtn = document.getElementById('btn-toggle-accent'); if(slideBtn) slideBtn.classList.remove('text-green-400', 'border-green-600'); if(accBtn) accBtn.classList.remove('text-green-400', 'border-green-600'); if(AppState.activeView !== 'drum') { const blk = window.timeMatrix.blocks[AppState.editingBlock]; const noteData = blk.tracks[AppState.activeView] ? blk.tracks[AppState.activeView][AppState.selectedStep] : null; if(noteData) { if(noteData.slide && slideBtn) slideBtn.classList.add('text-green-400', 'border-green-600'); if(noteData.accent && accBtn) accBtn.classList.add('text-green-400', 'border-green-600'); } } window.timeMatrix.selectedStep = AppState.selectedStep; window.timeMatrix.render(AppState.activeView, AppState.editingBlock); }
+function renderDrumRows() { const c = document.getElementById('editor-drum'); if(!c) return; c.innerHTML = ''; const blk = window.timeMatrix.blocks[AppState.editingBlock]; const cur = blk.drums[AppState.selectedStep]; const kits = (window.drumSynth && window.drumSynth.kits) ? window.drumSynth.kits : []; kits.forEach(k => { const act = cur.includes(k.id); const b = document.createElement('button'); b.className = `w-full py-2 px-3 mb-1 border flex justify-between items-center text-[10px] ${act ? 'bg-gray-900 border-green-700 text-green-400' : 'bg-transparent border-gray-800 text-gray-500'}`; b.innerHTML = `<span>${k.name}</span><div class="w-2 h-2 rounded-full" style="background:${k.color}"></div>`; b.onclick = () => { initEngine(); if(act) cur.splice(cur.indexOf(k.id), 1); else { cur.push(k.id); window.drumSynth.play(k.id, audioCtx.currentTime); } updateEditors(); }; c.appendChild(b); }); }
+function renderSynthMenu() { const c = document.getElementById('synth-list-container'); if(!c) return; c.innerHTML = ''; bassSynths.forEach(s => { const r = document.createElement('div'); r.className = 'flex justify-between bg-black p-2 border border-gray-800 text-xs'; r.innerHTML = `<span class="text-green-500">${s.id}</span><button class="text-red-500" onclick="removeBassSynth('${s.id}')">X</button>`; c.appendChild(r); }); }
+function togglePanelState() { AppState.panelCollapsed = !AppState.panelCollapsed; const p = document.getElementById('editor-panel'); const btn = document.getElementById('btn-minimize-panel'); if(AppState.panelCollapsed) { p.classList.remove('panel-expanded'); p.classList.add('panel-collapsed'); btn.innerHTML = "&#9650;"; } else { p.classList.remove('panel-collapsed'); p.classList.add('panel-expanded'); btn.innerHTML = "&#9660;"; } }
+function toggleVisualizerMode() { AppState.followPlayback = !AppState.followPlayback; const btn = document.getElementById('btn-toggle-visualizer'); if(AppState.followPlayback) { btn.innerText = "VISUALIZER: ON"; btn.classList.remove('border-gray-700', 'text-gray-400'); btn.classList.add('border-green-500', 'text-green-400', 'bg-green-900/20'); } else { btn.innerText = "VISUALIZER: OFF"; btn.classList.remove('border-green-500', 'text-green-400', 'bg-green-900/20'); btn.classList.add('border-gray-700', 'text-gray-400'); } }
 
-// --- SETUP ---
-document.addEventListener('DOMContentLoaded', () => {
-    bootstrap();
+function toggleUIMode() { 
+    AppState.uiMode = AppState.uiMode === 'analog' ? 'digital' : 'analog'; 
+    const btn = document.getElementById('btn-toggle-ui-mode'); 
+    const analogP = document.getElementById('fx-controls-analog'); 
+    const digitalP = document.getElementById('fx-controls-digital'); 
     
-    document.addEventListener('click', globalUnlock);
-    document.addEventListener('touchstart', globalUnlock);
-    
-    safeClick('btn-play', toggleTransport);
-    safeClick('app-logo', toggleTransport); 
-    
-    safeClick('btn-open-menu', () => { renderSynthMenu(); toggleMenu(); });
-    safeClick('btn-menu-close', toggleMenu);
-    
-    // Toggle UI Modes
-    safeClick('btn-toggle-ui-mode', toggleUIMode);
-    safeClick('btn-toggle-visualizer', toggleVisualizerMode);
+    if(AppState.uiMode === 'digital') { 
+        btn.innerText = "UI MODE: DIGITAL"; 
+        btn.classList.add('border-green-500', 'text-green-300'); 
+        analogP.classList.add('hidden'); 
+        digitalP.classList.remove('hidden'); 
+    } else { 
+        btn.innerText = "UI MODE: ANALOG"; 
+        btn.classList.remove('border-green-500', 'text-green-300'); 
+        analogP.classList.remove('hidden'); 
+        digitalP.classList.add('hidden'); 
+    } 
+    syncControlsFromSynth(AppState.activeView); 
+}
 
-    // Toggle Panel
-    safeClick('btn-minimize-panel', (e) => { e.stopPropagation(); togglePanelState(); });
-    safeClick('panel-header-trigger', togglePanelState);
+// --- EXPORT RENDER LOGIC ---
+async function renderAudio() {
+    if(AppState.isPlaying) toggleTransport();
+    window.logToScreen("Rendering WAV...");
+    const btn = document.getElementById('btn-start-render');
+    if(btn) { btn.innerText = "WAIT..."; btn.disabled = true; }
 
-    // WAVEFORM TOGGLE
-    safeClick('btn-waveform', toggleWaveform);
+    try {
+        const stepsPerBlock = window.timeMatrix.totalSteps;
+        const totalBlocks = window.timeMatrix.blocks.length;
+        const secPerStep = (60.0 / AppState.bpm) / 4;
+        const totalSteps = stepsPerBlock * totalBlocks * AppState.exportReps;
+        const duration = totalSteps * secPerStep + 2.0;
 
-    // Log
-    const logPanel = document.getElementById('sys-log-panel');
-    const logBtn = document.getElementById('btn-toggle-log-internal');
-    const toggleLog = () => {
-        if(logPanel.style.transform === 'translateY(-100%)') { logPanel.style.transform = 'translateY(0)'; logBtn.innerText = "[HIDE]"; }
-        else { logPanel.style.transform = 'translateY(-100%)'; logBtn.innerText = "[SHOW]"; }
-    };
-    if(logBtn) logBtn.onclick = toggleLog;
-    safeClick('btn-toggle-log-menu', () => { toggleLog(); toggleMenu(); });
+        const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        const offCtx = new OfflineCtx(2, 44100 * duration, 44100);
+        
+        const offMaster = offCtx.createGain();
+        offMaster.gain.value = 0.6;
+        offMaster.connect(offCtx.destination);
 
-    // Synth Actions
-    safeClick('btn-add-synth', addBassSynth);
-    safeClick('btn-menu-panic', () => location.reload());
-    safeClick('btn-menu-clear', () => { if(confirm("Clear?")) { window.timeMatrix.clearBlock(AppState.editingBlock); updateEditors(); toggleMenu(); }});
-    
-    // Track Actions
-    safeClick('btn-add-block', () => { window.timeMatrix.addBlock(); AppState.editingBlock = window.timeMatrix.blocks.length-1; updateEditors(); renderTrackBar(); });
-    safeClick('btn-del-block', () => { if(confirm("Del?")) { window.timeMatrix.removeBlock(AppState.editingBlock); AppState.editingBlock = Math.max(0, window.timeMatrix.blocks.length-1); updateEditors(); renderTrackBar(); }});
-    // COPY / PASTE
-    safeClick('btn-mem-copy', () => { 
-        if(window.timeMatrix.copyToClipboard(AppState.editingBlock)) {
-            window.logToScreen("PATTERN COPIED");
-        }
-    });
-    safeClick('btn-mem-paste', () => {
-        if(window.timeMatrix.pasteFromClipboard(AppState.editingBlock)) {
-            AppState.editingBlock++; // Seleccionar el nuevo bloque pegado
-            updateEditors(); 
-            renderTrackBar();
-            window.logToScreen("PATTERN PASTED");
-        } else {
-             window.logToScreen("CLIPBOARD EMPTY", 'error');
-        }
-    });
+        const offBass = [];
+        bassSynths.forEach(ls => {
+            const s = new window.BassSynth(ls.id);
+            s.init(offCtx, offMaster);
+            // Params are already normalized 0-100 in the live synth params
+            s.setDistortion(ls.params.distortion);
+            s.setCutoff(ls.params.cutoff);
+            s.setResonance(ls.params.resonance);
+            s.setEnvMod(ls.params.envMod);
+            s.setDecay(ls.params.decay);
+            s.setWaveform(ls.params.waveform);
+            offBass.push(s);
+        });
+        const offDrum = new DrumSynth();
+        offDrum.init(offCtx, offMaster);
 
-    safeClick('btn-move-left', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, -1)) { AppState.editingBlock--; updateEditors(); renderTrackBar(); }});
-    safeClick('btn-move-right', () => { if(window.timeMatrix.moveBlock(AppState.editingBlock, 1)) { AppState.editingBlock++; updateEditors(); renderTrackBar(); }});
-
-    // Export
-    safeClick('btn-open-export', () => { toggleMenu(); toggleExportModal(); });
-    safeClick('btn-close-export', toggleExportModal);
-    safeClick('btn-start-render', renderAudio);
-    
-    document.querySelectorAll('.export-rep-btn').forEach(btn => {
-        btn.onclick = () => {
-            document.querySelectorAll('.export-rep-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            AppState.exportReps = parseInt(btn.dataset.rep);
-        };
-    });
-    
-    // Matrix Tap
-    window.addEventListener('stepSelect', (e) => {
-        AppState.selectedStep = e.detail.index;
-        updateEditors();
-    });
-    
-    // Piano
-    document.querySelectorAll('.piano-key').forEach(k => {
-        k.onclick = () => {
-            initEngine();
-            const note = k.dataset.note;
-            const s = bassSynths.find(sy => sy.id === AppState.activeView);
-            if(!s) return;
-            const b = window.timeMatrix.blocks[AppState.editingBlock];
-            if(!b.tracks[s.id]) window.timeMatrix.registerTrack(s.id);
-            // Default: no slide, no accent
-            const prev = b.tracks[s.id][AppState.selectedStep];
-            b.tracks[s.id][AppState.selectedStep] = { 
-                note, 
-                octave: AppState.currentOctave,
-                slide: prev ? prev.slide : false,
-                accent: prev ? prev.accent : false
-            };
-            s.play(note, AppState.currentOctave, audioCtx.currentTime);
-            updateEditors();
-        };
-    });
-    
-    safeClick('btn-delete-note', () => {
-        const s = bassSynths.find(sy => sy.id === AppState.activeView);
-        if(s) { window.timeMatrix.blocks[AppState.editingBlock].tracks[s.id][AppState.selectedStep] = null; updateEditors(); }
-    });
-
-    // TOGGLE MODIFIERS
-    const toggleNoteMod = (prop) => {
-        if(AppState.activeView === 'drum') return;
-        const b = window.timeMatrix.blocks[AppState.editingBlock];
-        const track = b.tracks[AppState.activeView];
-        if(!track) return;
-        const note = track[AppState.selectedStep];
-        if(note) {
-            note[prop] = !note[prop];
-            updateEditors();
-        }
-    };
-    safeClick('btn-toggle-slide', () => toggleNoteMod('slide'));
-    safeClick('btn-toggle-accent', () => toggleNoteMod('accent'));
-    
-    const bpm = document.getElementById('bpm-input');
-    if(bpm) bpm.onchange = (e) => AppState.bpm = e.target.value;
-    
-    const octD = document.getElementById('oct-display');
-    safeClick('oct-up', () => { if(AppState.currentOctave<6) AppState.currentOctave++; octD.innerText=AppState.currentOctave; });
-    safeClick('oct-down', () => { if(AppState.currentOctave>1) AppState.currentOctave--; octD.innerText=AppState.currentOctave; });
-    
-    // ANALOG SLIDERS LOGIC
-    const handleSlider = (id, prop) => {
-        const el = document.getElementById(id);
-        if(el) el.oninput = (e) => {
-            const v = parseInt(e.target.value);
-            const s = bassSynths.find(sy => sy.id === AppState.activeView);
-            if(s) {
-                if(prop === 'distortion') s.setDistortion(v);
-                if(prop === 'cutoff') s.setCutoff(v);
-                if(prop === 'resonance') s.setResonance(v);
-                syncControlsFromSynth(AppState.activeView);
-            }
-        };
-    };
-    handleSlider('dist-slider', 'distortion');
-    handleSlider('cutoff-slider', 'cutoff');
-    handleSlider('res-slider', 'resonance');
-
-    // DIGITAL INPUTS LOGIC
-    const handleDigital = (id, prop) => {
-        const el = document.getElementById(id);
-        if(el) el.onchange = (e) => {
-            let val = parseInt(e.target.value);
-            val = Math.max(0, Math.min(100, val));
-            e.target.value = val;
-
-            const s = bassSynths.find(sy => sy.id === AppState.activeView);
-            if(s) {
-                if(prop === 'distortion') s.setDistortion(val);
-                if(prop === 'cutoff') {
-                    const freq = Math.floor((val / 100) * 4900) + 100;
-                    s.setCutoff(freq);
+        let t = 0.0;
+        for(let r=0; r<AppState.exportReps; r++) {
+            for(let b=0; b<totalBlocks; b++) {
+                const blk = window.timeMatrix.blocks[b];
+                for(let s=0; s<stepsPerBlock; s++) {
+                    if(blk.drums[s]) blk.drums[s].forEach(id=>offDrum.play(id, t));
+                    if(blk.tracks) Object.keys(blk.tracks).forEach(tid => {
+                        const n = blk.tracks[tid][s];
+                        if(n) {
+                            const syn = offBass.find(k=>k.id===tid);
+                            if(syn) syn.play(n.note, n.octave, t, 0.25, n.slide, n.accent);
+                        }
+                    });
+                    t += secPerStep;
                 }
-                if(prop === 'resonance') {
-                    const res = val / 5;
-                    s.setResonance(res);
-                }
-                syncControlsFromSynth(AppState.activeView);
             }
-        };
-    };
-    handleDigital('dist-digital', 'distortion');
-    handleDigital('cutoff-digital', 'cutoff');
-    handleDigital('res-digital', 'resonance');
-});
+        }
+
+        const buf = await offCtx.startRendering();
+        const wav = bufferToWave(buf, buf.length);
+        const url = URL.createObjectURL(wav);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ND23_Render_${Date.now()}.wav`;
+        a.click();
+        window.logToScreen("Download Ready!");
+        window.toggleExportModal();
+
+    } catch(e) { window.logToScreen("Render Err: "+e, 'error'); }
+    finally { if(btn) { btn.innerText = "RENDER"; btn.disabled = false; } }
+}
+
+function bufferToWave(abuffer, len) {
+    let numOfChan = abuffer.numberOfChannels,
+        length = len * numOfChan * 2 + 44,
+        buffer = new ArrayBuffer(length),
+        view = new DataView(buffer),
+        channels = [], i, sample,
+        offset = 0, pos = 0;
+
+    function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
+    function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+
+    setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+    setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
+    setUint32(abuffer.sampleRate); setUint32(abuffer.sampleRate * 2 * numOfChan);
+    setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
+    setUint32(length - pos - 4);
+
+    for(i = 0; i < numOfChan; i++) channels.push(abuffer.getChannelData(i));
+
+    while(pos < length) {
+        for(i = 0; i < numOfChan; i++) {
+            sample = Math.max(-1, Math.min(1, channels[i][offset])); 
+            sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767)|0; 
+            view.setInt16(pos, sample, true); pos += 2;
+        }
+        offset++;
+    }
+    return new Blob([buffer], {type: "audio/wav"});
+}
