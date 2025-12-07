@@ -162,166 +162,239 @@
         <!-- HEADER PANEL -->
         <div class="h-8 bg-black flex items-center justify-between px-4 border-b border-gray-800 shrink-0 cursor-pointer" id="panel-header-trigger">
             <span id="step-info-display" class="text-[10px] text-gray-500 tracking-widest">EDIT</span>
-            <button id="btn-minimize-panel" class="text-xs text-green-500 hover:text-white px-2 py-1 font-bold">
-                &#9660; 
-            </button>
+            
+            <!-- PANEL CONTROLS GROUP -->
+            <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+                <button id="btn-toggle-view-keys" class="text-[9px] font-bold border border-green-500/50 px-2 py-0.5 rounded text-green-400 bg-green-900/20 hover:bg-green-900/40 transition-colors">KEYS</button>
+                <button id="btn-toggle-view-fx" class="text-[9px] font-bold border border-green-500/50 px-2 py-0.5 rounded text-green-400 bg-green-900/20 hover:bg-green-900/40 transition-colors">FX</button>
+                
+                <div class="w-px h-4 bg-gray-800 mx-1"></div>
+                
+                <button id="btn-minimize-panel" class="text-xs text-green-500 hover:text-white px-2 py-1 font-bold">
+                    &#9660; 
+                </button>
+            </div>
         </div>
 
         <!-- CONTENIDO DEL PANEL -->
         <div class="flex-1 flex flex-col overflow-hidden">
-            <div id="editor-bass" class="flex-1 p-2 flex flex-col gap-1 overflow-y-auto custom-scroll">
+            <div id="editor-bass" class="flex-1 p-2 flex flex-col gap-2 overflow-y-auto custom-scroll">
                 
-                <!-- ROW 1: CONTROLS (OCTAVE - MODIFIERS - WAVEFORM) -->
-                <div class="flex justify-between items-center shrink-0 gap-2">
-                    <!-- OCTAVE -->
-                    <div class="flex items-center gap-1 bg-gray-900 rounded p-1 border border-gray-800 shrink-0">
-                        <button id="oct-down" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded text-gray-400 font-bold">-</button>
-                        <span id="oct-display" class="w-8 text-center text-xs font-bold text-green-500">3</span>
-                        <button id="oct-up" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded text-gray-400 font-bold">+</button>
-                    </div>
-                    
-                    <!-- MODIFIERS -->
-                    <div class="flex gap-1 flex-1 justify-center">
-                        <button id="btn-toggle-slide" class="px-2 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold rounded">~ SLIDE</button>
-                        <button id="btn-toggle-accent" class="px-2 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold rounded">^ ACCENT</button>
-                    </div>
+                <!-- SUBPANEL FX (Controls & Sliders) -->
+                <div id="subpanel-fx" class="transition-all duration-300">
+                     <!-- DEDICATED FX BAR -->
+                    <div id="fx-container-bar" class="w-full bg-[#050505] border border-gray-800 rounded p-2 relative shadow-inner">
+                        
+                        <!-- ANALOG MODE (GRID 2 COLUMNS) -->
+                        <div id="fx-controls-analog" class="grid grid-cols-2 gap-2 w-full transition-all duration-300">
+                            <!-- VOL (MASTER) -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50 col-span-2">
+                                <label class="text-[8px] text-green-500 w-8 text-right font-bold">VOL</label>
+                                <input type="range" id="vol-slider" min="0" max="100" value="85" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
 
-                    <!-- WAVEFORM -->
-                    <button id="btn-waveform" class="w-20 h-8 bg-gray-900 border border-gray-800 rounded flex items-center justify-center gap-2 text-[10px] text-gray-400 hover:border-green-500 hover:text-green-500 transition-colors shrink-0">
-                        <span class="text-lg font-bold leading-none mb-0.5">~</span>
-                        <span>SAW</span>
-                    </button>
+                            <!-- CUTOFF -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">CUT</label>
+                                <input type="range" id="cutoff-slider" min="100" max="5000" value="800" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- RESONANCE -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">RES</label>
+                                <input type="range" id="res-slider" min="0" max="20" value="4" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- ENVELOPE -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">ENV</label>
+                                <input type="range" id="env-slider" min="0" max="100" value="60" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- DECAY -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">DEC</label>
+                                <input type="range" id="dec-slider" min="0" max="100" value="40" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- ACCENT INT -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">ACC</label>
+                                <input type="range" id="acc-slider" min="0" max="100" value="50" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- DRIVE -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">DRV</label>
+                                <input type="range" id="dist-slider" min="0" max="100" value="20" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- TONE -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">TONE</label>
+                                <input type="range" id="tone-slider" min="0" max="100" value="100" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                            <!-- GAIN -->
+                            <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
+                                <label class="text-[8px] text-gray-500 w-8 text-right font-bold">GAIN</label>
+                                <input type="range" id="dgain-slider" min="0" max="100" value="60" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
+                            </div>
+                        </div>
+
+                        <!-- DIGITAL MODE (FLEX WRAP) -->
+                        <div id="fx-controls-digital" class="hidden flex flex-wrap gap-1 w-full">
+                            <!-- VOL -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label text-green-500">VOL</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="vol-digital" value="85" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="volume" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="volume" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- CUTOFF -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">CUT</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="cutoff-digital" value="14" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="cutoff" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="cutoff" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- RESONANCE -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">RES</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="res-digital" value="20" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="resonance" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="resonance" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- ENVELOPE -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">ENV</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="env-digital" value="60" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="envMod" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="envMod" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- DECAY -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">DEC</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="dec-digital" value="40" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="decay" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="decay" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- ACCENT -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">ACC</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="acc-digital" value="50" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="accentInt" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="accentInt" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- DRIVE -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">DRV</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="dist-digital" value="20" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="distortion" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="distortion" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                            <!-- TONE -->
+                            <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">TONE</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="tone-digital" value="100" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="distTone" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="distTone" data-dir="1">+</button>
+                                </div>
+                            </div>
+
+                             <!-- GAIN -->
+                             <div class="digital-fx-box grow min-w-[50px]">
+                                <div class="dfx-label">GAIN</div>
+                                <div class="dfx-value-container relative group">
+                                    <input type="number" id="dgain-digital" value="60" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
+                                </div>
+                                <div class="dfx-buttons">
+                                    <button class="dfx-btn" data-target="distGain" data-dir="-1">-</button>
+                                    <button class="dfx-btn" data-target="distGain" data-dir="1">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- ROW 2: DEDICATED FX BAR -->
-                <div id="fx-container-bar" class="w-full bg-[#050505] border border-gray-800 rounded p-2 relative shadow-inner">
+                <!-- SUBPANEL KEYS (Controls & Piano) -->
+                <div id="subpanel-keys" class="transition-all duration-300 flex flex-col gap-1">
+                    <!-- CONTROLS (OCTAVE - MODIFIERS - WAVEFORM) -->
+                    <div class="flex justify-between items-center shrink-0 gap-2 mb-1">
+                        <!-- OCTAVE -->
+                        <div class="flex items-center gap-1 bg-gray-900 rounded p-1 border border-gray-800 shrink-0">
+                            <button id="oct-down" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded text-gray-400 font-bold">-</button>
+                            <span id="oct-display" class="w-8 text-center text-xs font-bold text-green-500">3</span>
+                            <button id="oct-up" class="w-8 h-6 bg-gray-800 text-xs hover:bg-gray-700 rounded text-gray-400 font-bold">+</button>
+                        </div>
+                        
+                        <!-- MODIFIERS -->
+                        <div class="flex gap-1 flex-1 justify-center">
+                            <button id="btn-toggle-slide" class="px-2 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold rounded">~ SLIDE</button>
+                            <button id="btn-toggle-accent" class="px-2 py-1 border border-gray-700 bg-gray-900/50 text-gray-500 text-[10px] tracking-widest hover:text-green-400 hover:border-green-600 transition-all font-bold rounded">^ ACCENT</button>
+                        </div>
+
+                        <!-- WAVEFORM -->
+                        <button id="btn-waveform" class="w-20 h-8 bg-gray-900 border border-gray-800 rounded flex items-center justify-center gap-2 text-[10px] text-gray-400 hover:border-green-500 hover:text-green-500 transition-colors shrink-0">
+                            <span class="text-lg font-bold leading-none mb-0.5">~</span>
+                            <span>SAW</span>
+                        </button>
+                    </div>
+
+                    <!-- PIANO (RESTRUCTURED OVERLAY) -->
+                    <div id="piano-container" class="relative h-20 w-full select-none mb-1 shrink-0">
+                        <!-- WHITE KEYS (BACKGROUND) -->
+                        <div class="flex w-full h-full gap-0.5">
+                            <button class="piano-key white-key flex-1" data-note="C">C</button>
+                            <button class="piano-key white-key flex-1" data-note="D">D</button>
+                            <button class="piano-key white-key flex-1" data-note="E">E</button>
+                            <button class="piano-key white-key flex-1" data-note="F">F</button>
+                            <button class="piano-key white-key flex-1" data-note="G">G</button>
+                            <button class="piano-key white-key flex-1" data-note="A">A</button>
+                            <button class="piano-key white-key flex-1" data-note="B">B</button>
+                        </div>
+
+                        <!-- BLACK KEYS (OVERLAY - ABSOLUTE POSITIONING) -->
+                        <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 14.28%;" data-note="C#">C#</button>
+                        <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 28.57%;" data-note="D#">D#</button>
+                        <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 57.14%;" data-note="F#">F#</button>
+                        <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 71.42%;" data-note="G#">G#</button>
+                        <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 85.71%;" data-note="A#">A#</button>
+                    </div>
                     
-                    <!-- ANALOG MODE (STACKED VERTICALLY) -->
-                    <div id="fx-controls-analog" class="flex flex-col gap-2 w-full transition-all duration-300">
-                        <!-- CUTOFF -->
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
-                            <label class="text-[8px] text-gray-500 w-8 text-right font-bold">CUT</label>
-                            <input type="range" id="cutoff-slider" min="100" max="5000" value="800" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
-                        </div>
-                        <!-- RESONANCE -->
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
-                            <label class="text-[8px] text-gray-500 w-8 text-right font-bold">RES</label>
-                            <input type="range" id="res-slider" min="0" max="20" value="4" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
-                        </div>
-                        <!-- ENVELOPE -->
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
-                            <label class="text-[8px] text-gray-500 w-8 text-right font-bold">ENV</label>
-                            <input type="range" id="env-slider" min="0" max="100" value="60" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
-                        </div>
-                        <!-- DECAY -->
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
-                            <label class="text-[8px] text-gray-500 w-8 text-right font-bold">DEC</label>
-                            <input type="range" id="dec-slider" min="0" max="100" value="40" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
-                        </div>
-                        <!-- DRIVE -->
-                        <div class="flex items-center gap-2 bg-gray-900/50 p-1 rounded border border-gray-800/50">
-                            <label class="text-[8px] text-gray-500 w-8 text-right font-bold">DRV</label>
-                            <input type="range" id="dist-slider" min="0" max="100" value="20" class="flex-1 h-1 bg-black rounded appearance-none cursor-pointer">
-                        </div>
-                    </div>
-
-                    <!-- DIGITAL MODE (STACKED HORIZONTALLY) -->
-                    <div id="fx-controls-digital" class="hidden flex gap-1 w-full">
-                        <!-- CUTOFF -->
-                        <div class="digital-fx-box">
-                            <div class="dfx-label">CUT</div>
-                            <div class="dfx-value-container relative group">
-                                <input type="number" id="cutoff-digital" value="14" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
-                                <span class="text-[8px] text-gray-600 absolute right-1 pointer-events-none">%</span>
-                            </div>
-                            <div class="dfx-buttons">
-                                <button class="dfx-btn" data-target="cutoff" data-dir="-1">-</button>
-                                <button class="dfx-btn" data-target="cutoff" data-dir="1">+</button>
-                            </div>
-                        </div>
-
-                        <!-- RESONANCE -->
-                        <div class="digital-fx-box">
-                            <div class="dfx-label">RES</div>
-                            <div class="dfx-value-container relative group">
-                                <input type="number" id="res-digital" value="20" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
-                                <span class="text-[8px] text-gray-600 absolute right-1 pointer-events-none">%</span>
-                            </div>
-                            <div class="dfx-buttons">
-                                <button class="dfx-btn" data-target="resonance" data-dir="-1">-</button>
-                                <button class="dfx-btn" data-target="resonance" data-dir="1">+</button>
-                            </div>
-                        </div>
-
-                        <!-- ENVELOPE -->
-                        <div class="digital-fx-box">
-                            <div class="dfx-label">ENV</div>
-                            <div class="dfx-value-container relative group">
-                                <input type="number" id="env-digital" value="60" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
-                                <span class="text-[8px] text-gray-600 absolute right-1 pointer-events-none">%</span>
-                            </div>
-                            <div class="dfx-buttons">
-                                <button class="dfx-btn" data-target="envMod" data-dir="-1">-</button>
-                                <button class="dfx-btn" data-target="envMod" data-dir="1">+</button>
-                            </div>
-                        </div>
-
-                        <!-- DECAY -->
-                        <div class="digital-fx-box">
-                            <div class="dfx-label">DEC</div>
-                            <div class="dfx-value-container relative group">
-                                <input type="number" id="dec-digital" value="40" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
-                                <span class="text-[8px] text-gray-600 absolute right-1 pointer-events-none">%</span>
-                            </div>
-                            <div class="dfx-buttons">
-                                <button class="dfx-btn" data-target="decay" data-dir="-1">-</button>
-                                <button class="dfx-btn" data-target="decay" data-dir="1">+</button>
-                            </div>
-                        </div>
-
-                        <!-- DRIVE -->
-                        <div class="digital-fx-box">
-                            <div class="dfx-label">DRV</div>
-                            <div class="dfx-value-container relative group">
-                                <input type="number" id="dist-digital" value="20" class="dfx-value bg-transparent text-center focus:outline-none focus:text-white" min="0" max="100">
-                                <span class="text-[8px] text-gray-600 absolute right-1 pointer-events-none">%</span>
-                            </div>
-                            <div class="dfx-buttons">
-                                <button class="dfx-btn" data-target="distortion" data-dir="-1">-</button>
-                                <button class="dfx-btn" data-target="distortion" data-dir="1">+</button>
-                            </div>
-                        </div>
-                    </div>
+                    <button id="btn-delete-note" class="w-full py-1 text-[10px] text-red-500 border border-red-900/30 hover:bg-red-900/10 rounded tracking-widest font-bold transition-colors shrink-0">CLEAR NOTE</button>
                 </div>
-
-                <!-- PIANO (RESTRUCTURED OVERLAY) -->
-                <div id="piano-container" class="relative h-20 w-full select-none mb-1 shrink-0">
-                    <!-- WHITE KEYS (BACKGROUND) -->
-                    <div class="flex w-full h-full gap-0.5">
-                        <button class="piano-key white-key flex-1" data-note="C">C</button>
-                        <button class="piano-key white-key flex-1" data-note="D">D</button>
-                        <button class="piano-key white-key flex-1" data-note="E">E</button>
-                        <button class="piano-key white-key flex-1" data-note="F">F</button>
-                        <button class="piano-key white-key flex-1" data-note="G">G</button>
-                        <button class="piano-key white-key flex-1" data-note="A">A</button>
-                        <button class="piano-key white-key flex-1" data-note="B">B</button>
-                    </div>
-
-                    <!-- BLACK KEYS (OVERLAY - ABSOLUTE POSITIONING) -->
-                    <!-- C# (Between 1 and 2) -> 14.28% -->
-                    <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 14.28%;" data-note="C#">C#</button>
-                    <!-- D# (Between 2 and 3) -> 28.57% -->
-                    <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 28.57%;" data-note="D#">D#</button>
-                    
-                    <!-- F# (Between 4 and 5) -> 57.14% -->
-                    <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 57.14%;" data-note="F#">F#</button>
-                    <!-- G# (Between 5 and 6) -> 71.42% -->
-                    <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 71.42%;" data-note="G#">G#</button>
-                    <!-- A# (Between 6 and 7) -> 85.71% -->
-                    <button class="piano-key black-key absolute top-0 w-[10%] -translate-x-1/2 z-10" style="left: 85.71%;" data-note="A#">A#</button>
-                </div>
-                
-                <button id="btn-delete-note" class="w-full py-1 text-[10px] text-red-500 border border-red-900/30 hover:bg-red-900/10 rounded tracking-widest font-bold transition-colors shrink-0">CLEAR NOTE</button>
             </div>
 
             <div id="editor-drum" class="hidden flex-1 p-2 overflow-y-auto custom-scroll"></div>
@@ -333,6 +406,8 @@
     <script src="Synth/bass_synth.js"></script>
     <script src="Synth/drum_synth.js"></script>
     <script src="Synth/timematrix.js"></script>
+    <script src="Synth/audio_engine.js"></script>
+    <script src="Synth/ui_controller.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
