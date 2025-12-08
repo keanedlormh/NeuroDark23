@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NeuroDark23 | Light Dark Edition</title>
+    <title>NeuroDark23 | v39 Final UI</title>
     <link rel="stylesheet" href="style.css">
     
     <script>
@@ -40,11 +40,11 @@
             </div>
         </div>
         <div id="sys-log-content" class="terminal-body custom-scroll">
-            <div class="log-init">System Ready. Audio Engine Standby...</div>
+            <div class="log-init">System Ready. Initializing Audio Engine v39...</div>
         </div>
     </div>
 
-    <!-- MODAL: EXPORT -->
+    <!-- EXPORT MODAL -->
     <div id="export-modal" class="modal-overlay hidden">
         <div class="modal-window border-green">
             <h2 class="modal-header text-green">RENDER AUDIO</h2>
@@ -64,7 +64,7 @@
         </div>
     </div>
 
-    <!-- MODAL: MEMORY -->
+    <!-- MEMORY MODAL -->
     <div id="memory-modal" class="modal-overlay hidden">
         <div class="modal-window border-purple modal-wide">
             <h2 class="modal-header text-purple">VIRTUAL MEMORY</h2>
@@ -92,10 +92,10 @@
         </div>
     </div>
 
-    <!-- MAIN MENU -->
+    <!-- MAIN CONFIG MENU -->
     <div id="main-menu" class="modal-overlay hidden">
         <div class="menu-container">
-            <h2 class="menu-logo">MENU</h2>
+            <h2 class="menu-logo">MENU CONFIG</h2>
             
             <div class="menu-section">
                  <button id="btn-toggle-ui-mode" class="btn-menu-toggle">UI MODE: ANALOG</button>
@@ -103,9 +103,15 @@
             </div>
 
             <div class="menu-section">
-                <h3 class="section-label">MODULES</h3>
+                <h3 class="section-label">BASS SYNTHS</h3>
                 <div id="synth-list-container" class="list-vertical"></div>
                 <button id="btn-add-synth" class="btn-dashed">+ ADD BASS</button>
+            </div>
+
+            <div class="menu-section">
+                <h3 class="section-label">DRUM CONFIGURATION</h3>
+                <!-- Removed Header Text Row (CH VARIANT COLOR) -->
+                <div id="drum-config-container" class="drum-config-grid custom-scroll"></div>
             </div>
 
             <div class="menu-section vertical-stack">
@@ -115,6 +121,7 @@
                 <button id="btn-menu-clear" class="btn-menu-action text-red-dim">CLEAR PATTERN</button>
                 <button id="btn-menu-panic" class="btn-menu-action text-red bg-red-dim">RESET SYSTEM</button>
             </div>
+            
             <button id="btn-menu-close" class="btn-resume">RESUME</button>
         </div>
     </div>
@@ -139,6 +146,7 @@
                     <input type="number" id="bpm-input" value="174" class="input-bpm">
                 </div>
 
+                <!-- TRANSPORT CENTER -->
                 <div id="play-container" class="transport-center">
                     <svg id="play-clock-svg" class="clock-ring" viewBox="0 0 100 100"></svg>
                     <button id="btn-play" class="btn-transport-play">&#9658;</button>
@@ -152,7 +160,7 @@
                 </div>
             </div>
 
-            <!-- CHAIN BAR -->
+            <!-- CHAIN & TRACKS -->
             <div class="chain-section">
                 <div class="chain-header">
                     <span class="label-mini">CHAIN</span>
@@ -170,27 +178,39 @@
                 <div id="track-bar" class="track-timeline custom-scroll"></div>
             </div>
 
-            <!-- TABS -->
+            <!-- INSTRUMENT TABS -->
             <div id="instrument-tabs-container" class="tabs-bar"></div>
 
-            <!-- SEQUENCER GRID -->
+            <!-- STEP MATRIX -->
             <div id="matrix-container" class="step-grid"></div>
             
             <div class="spacer-bottom"></div> 
         </div>
     </div>
 
-    <!-- BOTTOM EDITOR -->
+    <!-- EDITOR PANEL (DRAWER) -->
     <div id="editor-panel" class="editor-drawer expanded">
         
         <div class="drawer-header" id="panel-header-trigger">
             <span id="step-info-display" class="drawer-title">EDIT MODE</span>
             
+            <!-- DRAWER ACTIONS -->
             <div class="drawer-actions" onclick="event.stopPropagation()">
+                
+                <!-- BASS SPECIFIC TOOLS (Grouped for visibility toggling) -->
+                <div id="bass-tools-group" class="tools-group">
+                    <button id="btn-waveform" class="btn-pill">
+                        <span class="wave-symbol">~</span> SAW
+                    </button>
+                    <div class="sep-v-dark"></div>
+                </div>
+
+                <!-- GLOBAL VIEW TOOLS -->
                 <div class="view-toggles">
                     <button id="btn-toggle-view-keys" class="btn-pill active">KEYS</button>
                     <button id="btn-toggle-view-fx" class="btn-pill active">FX</button>
                 </div>
+                
                 <div class="sep-v-dark"></div>
                 <button id="btn-minimize-panel" class="btn-minimize">&#9660;</button>
             </div>
@@ -205,6 +225,7 @@
                 <div id="subpanel-fx" class="control-group">
                     <div id="fx-container-bar" class="fx-rack">
                         
+                        <!-- Analog Controls -->
                         <div id="fx-controls-analog" class="rack-grid">
                             <div class="rack-module span-2">
                                 <label class="mod-label text-green">VOL</label>
@@ -220,6 +241,7 @@
                             <div class="rack-module"><label class="mod-label">GAIN</label><input type="range" id="dgain-slider" min="0" max="100" value="60" class="fader"></div>
                         </div>
 
+                        <!-- Digital Controls -->
                         <div id="fx-controls-digital" class="digital-rack hidden">
                             <div class="digi-module"><div class="digi-label text-green">VOL</div><div class="digi-screen"><input type="number" id="vol-digital" class="digi-val"></div><div class="digi-btns"><button class="dfx-btn" data-target="volume" data-dir="-1">-</button><button class="dfx-btn" data-target="volume" data-dir="1">+</button></div></div>
                             <div class="digi-module"><div class="digi-label">CUT</div><div class="digi-screen"><input type="number" id="cutoff-digital" class="digi-val"></div><div class="digi-btns"><button class="dfx-btn" data-target="cutoff" data-dir="-1">-</button><button class="dfx-btn" data-target="cutoff" data-dir="1">+</button></div></div>
@@ -234,7 +256,7 @@
                     </div>
                 </div>
 
-                <!-- KEYBOARD -->
+                <!-- KEYBOARD & MODS -->
                 <div id="subpanel-keys" class="control-group">
                     <div class="keyboard-bar">
                         <div class="octave-widget">
@@ -248,9 +270,6 @@
                             <button id="btn-toggle-accent" class="btn-mod">^ ACCENT</button>
                         </div>
 
-                        <button id="btn-waveform" class="btn-wave">
-                            <span class="wave-symbol">~</span> SAW
-                        </button>
                     </div>
 
                     <div id="piano-container" class="piano-bed">
@@ -279,7 +298,6 @@
         </div>
     </div>
 
-    <!-- SCRIPTS -->
     <script src="Synth/fx_synth.js"></script>
     <script src="Synth/bass_synth.js"></script>
     <script src="Synth/drum_synth.js"></script>
